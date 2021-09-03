@@ -9,7 +9,9 @@ import torch.backends.cudnn as cudnn
 import torch.optim
 import torch.utils.data
 import models
+import copy
 
+import torch.nn.functional as F
 from torch.autograd import Variable
 from data import get_dataset 
 from preprocess import get_transform
@@ -111,17 +113,20 @@ def main():
     logging.debug("run arguments: %s", args)
 
     writer = TensorboardWriter(args.tb_dir)
-
     args.gpus = None
-    
     logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
+    bin_model = models.__dict__[args.model]
+
     model_config = {'input_size': args.input_size, 'dataset':args.dataset}
 
     if args.model_config is not '':
         model_config = dict(model_config, **literal_eval(args.model_config))
 
+    # Prepare model and binary model 
     model = model(**model_config) 
+    bin_model = bin_model(**model_config)
+
     logging.info("created model with configuration: %s", model_config)
 
     if args.evaluate:
@@ -129,6 +134,7 @@ def main():
             parser.error('invalid checkpoint: {}'.format(args.evaluate))
         checkpoint=torch.load(args.evaluate)
         model.load_state_dict(checkpoint['state_dict'])
+        bin_model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
                 args.evaluate, checkpoint['epoch'])
     elif args.resume:
@@ -140,6 +146,7 @@ def main():
         best_prec1 = checkpoint['best_prec1']
         best_prec1 = best_prec1.cuda(args.gpus[0])
         model.load_state_dict(checkpoint['state_dict'])
+        bin_model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
                 checkpoint_file, checkpoint['epoch'])
     else:
@@ -167,33 +174,15 @@ def main():
                                             'weight_decay':args.weight_decay}})
 
     #Adjust stepsize regime for specific optimizers
-    if args.binary_regime:
-        regime={
-                0: {'optimizer':'Adam', 'lr':1e-2},
-                80: {'lr': 1e-2},
-                120: {'lr': 1e-3},
-                300: {'lr' : 1e-3}
-        }
-    elif args.ttq_regime:
-        regime = {
-            0: {'optimizer': 'SGD', 'lr': 0.1,
-                'momentum': 0.9, 'weight_decay': 2e-4},
-            80: {'lr': 1e-2},
-            120: {'lr': 1e-3},
-            300: {'lr': 1e-4}
-        }
-    elif args.optimizer == 'Adam':
+    if args.optimizer == 'Adam':
         regime = {
             0 : {'optimizer': 'Adam', 'lr': args.lr},
         }
-    elif args.projection_mode != None:
-        # Remove weight decay when using SGD, and reset momentum
-        regime[0]['weight_decay'] = 0.0
-        regime[0]['momentum'] = args.momentum
 
     criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
     criterion.type(args.type)
     model.type(args.type)
+    bin_model.type(args.type)
 
     val_data = get_dataset(args.dataset, 'val', transform['eval'])
     val_loader = torch.utils.data.DataLoader(
@@ -202,9 +191,10 @@ def main():
         num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
-        validate(val_loader, model, criterion, 0)
+        validate(val_loader, model, bin_model, criterion, 0)
         return
 
+    #Get training and validation datasets
     train_data = get_dataset(args.dataset, 'train', transform['train'])
     train_loader = torch.utils.data.DataLoader(
         train_data,
@@ -219,15 +209,8 @@ def main():
         'prox_ternary', 'ttq'] else if_binary,
         ttq = (args.projection_mode=='ttq'))
 
-    # Optionally freeze before training
-    if args.freeze_epoch == 1:
-        bin_op.quantize(mode='binary_freeze')
-        args.projection_mode = None
-
     try:
         for epoch in range(args.start_epoch, args.epochs):
-            if not(args.no_adjust):
-                optimizer=adjust_optimizer(optimizer, epoch, regime)
 
             #train for one epoch
             # Adjust binary regression mode if non-lazy projection 
@@ -236,24 +219,19 @@ def main():
             else: 
                 br = args.binary_reg
 
-            #Adjust binary reg according to learning rate
-            if args.adjust_reg:
-                curr_lr = optimizer.param_groups[0]['lr']
-                br *= args.lr / curr_lr
-
             # Training
             train_loss, train_prec1, train_prec5 = train(train_loader, 
-                    model, criterion, epoch, optimizer, 
+                    model, bin_model, criterion, epoch, optimizer, 
                     br = br, bin_op = bin_op, projection_mode = args.projection_mode)
 
             # evaluate on validation set 
             val_loss, val_prec1, val_prec5 = validate(
-                    val_loader, model, criterion, epoch, 
+                    val_loader, model, bin_model, criterion, epoch, 
                     br=br, bin_op = bin_op, projection_mode=args.projection_mode,
                     binarize=True)
 
             val_loss_bin, val_prec1_bin, val_prec5_bin = validate(
-                val_loader, model, criterion, epoch,
+                val_loader, model, bin_model, criterion, epoch,
                 br=br, bin_op=bin_op, projection_mode=args.projection_mode,
                 binarize=True)
 
@@ -323,7 +301,7 @@ def main():
         print('Exiting from training early')
 
    
-def forward(data_loader, model, criterion,  epoch=0, training=True, optimizer=None, 
+def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, optimizer=None, 
         br=0.0, bin_op=None, projection_mode=None, binarize=False):
 
     if args.gpus and len(args.gpus) > 1:
@@ -335,6 +313,10 @@ def forward(data_loader, model, criterion,  epoch=0, training=True, optimizer=No
     top1 = AverageMeter()
     top5 = AverageMeter()
 
+    bin_losses = AverageMeter()
+    bin_top1 = AverageMeter()
+    bin_top5 = AverageMeter()
+
     end = time.time()
 
     for i, (inputs, target) in enumerate(data_loader):
@@ -345,60 +327,79 @@ def forward(data_loader, model, criterion,  epoch=0, training=True, optimizer=No
         input_var = Variable(inputs.type(args.type), volatile = not training)
         target_var = Variable(target)
 
-        if training:
-            if projection_mode == 'lazy':
-                bin_op.save_params()
-                bin_op.prox_operator(br, 'binary')
-
-            elif projection_mode == 'ttq':
-                bin_op.save_params()
-                bin_op.quantize('ttq')
-
-            elif projection_mode=='stoch_bin':
-                bin_op.save_params()
-                bin_op.binarize(mode='stochastic')
-
         #compute output 
         output = model(input_var)
         loss = criterion(output, target_var)
-
         if type(output) is list:
             output = output[0]
 
+        # Compute prediction by bin_model
+        bin_output = bin_model(input_var)
+        bin_loss = criterion(bin_output, target_var)
+        if type(bin_output) is list:
+            bin_output = bin_output[0]
+
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        # losses.update(loss.data[0], inputs.size(0))
         losses.update(loss.data.item(), inputs.size(0))
-        # top1.update(prec1[0], inputs.size(0))
         top1.update(prec1.item(), inputs.size(0))
         top5.update(prec5.item(), inputs.size(0))
+
+        bin_prec1, bin_prec5 = accuracy(bin_output.data, target, topk=(1,5))
+        bin_losses.update(bin_loss.data.item(), inputs.size(0))
+        bin_top1.update(bin_prec1.item(), inputs.size(0))
+        bin_top5.update(bin_prec5.item(), inputs.size(0))
         
+
+
+        
+        tau = 10.0
+        delta = 0.001
         if training:
             #computing gradient and do SGD step 
+            model_backup = copy.deepcopy(model)
+            backup_params={} 
+            hardtanh_params = {}
+
+            # Compute w* before applying backward()
+            for n, p in model.named_parameters():
+                if if_binary(n):
+                    wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
+                    p.data.copy_(wstar)
+                    backup_params[n] = copy.deepcopy(p.data)
+                    hardtanh_params[n] = copy.deepcopy(wstar)
+
+            #Compute gradient w.r.t. w*
             optimizer.zero_grad()
             loss.backward()
 
-            #copy parameters according to quantization modes
-            if projection_mode in ['lazy', 'stoch_bin']:
-                bin_op.restore()
-                optimizer.step()
-                bin_op.clip()
-            elif projection_mode == 'ttq':
-                bin_op.restore()
-                optimizer.step()
-                step_ternary_vals(bin_op, optimizer)
-            elif projection_mode in ['prox', 'prox_median', 'prox_tenary']:
-                optimizer.step()
-                curr_lr = optimizer.param_group[0]['lr']
-                if (projection_mode == 'prox'):
-                    bin_op.prox_operator(curr_lr * br, 'binary')
-                elif projection_mode == 'prox_median':
-                    bin_op.prox_operator(curr_lr * br, 'median')
-                elif projection_mode == 'prox_ternary':
-                    bin_op.prox_operator(curr_lr * br, 'ternary')
-                bin_op.clip()
-            else:
-                optimizer.step()
+            #Now,restore the parameters
+            # with torch.no_grad():
+            for n,p in model.named_parameters():
+                if if_binary(n):
+                    p.data.copy_(backup_params[n])
+
+            # With wstar and grad, we can now compute delta E and update paramteters 
+            for n, p in bin_model.named_parameters():
+                if if_binary(n):
+                    p.data.copy_(hardtanh_params[n])
+
+            # pdb.set_trace()
+            for n, p in model.named_parameters():
+                if if_binary(n):
+                    wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
+                    wbar = p.data - tau * p.grad
+
+                    # Use autograd to update theta -> This should be done in closed-form
+                    tt = Variable(p.data, requires_grad=True)
+                    deltaE = 1/tau * (torch.norm(tt - wbar) - torch.norm(tt-wstar)).sum()
+                    deltaE.backward()
+                    p.grad.data.copy_(tt.grad)
+                    # pdb.set_trace()
+                    
+            # optimizer.zero_grad()
+            # loss.backward()
+            optimizer.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -409,33 +410,34 @@ def forward(data_loader, model, criterion,  epoch=0, training=True, optimizer=No
                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                          'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                         'Bin_Prec@1 {bin_top1.val:.3f} ({bin_top1.avg:.3f})\t'
+                         'Bin_Prec@5 {bin_top5.val:.3f} ({bin_top5.avg:.3f})\t'
                          'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                          'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                              epoch, i, len(data_loader),
                              phase='TRAINING' if training else 'EVALUATING',
                              batch_time=batch_time,
-                             data_time=data_time, loss=losses, top1=top1, top5=top5))
+                             data_time=data_time, loss=losses, bin_top1 = bin_top1, 
+                             bin_top5=bin_top5, top1=top1, top5=top5))
 
-    if not(training):
-        bin_op.restore()
     return losses.avg, top1.avg, top5.avg
 
         
-def train(data_loader, model, criterion, epoch, optimizer,
+def train(data_loader, model, bin_model, criterion, epoch, optimizer,
           br=0.0, bin_op=None, projection_mode=None):
     # switch to train mode
     model.train()
-    return forward(data_loader, model, criterion, epoch,
+    return forward(data_loader, model, bin_model, criterion, epoch,
                    training=True, optimizer=optimizer,
                    br=br, bin_op=bin_op, projection_mode=projection_mode)
 
 
-def validate(data_loader, model, criterion, epoch,
+def validate(data_loader, model, bin_model, criterion, epoch,
              br=0.0, bin_op=None, projection_mode=None,
              binarize=False):
     # switch to evaluate mode
     model.eval()
-    return forward(data_loader, model, criterion, epoch,
+    return forward(data_loader, model, bin_model, criterion, epoch,
                    training=False, optimizer=None,
                    br=br, bin_op=bin_op, projection_mode=projection_mode,
                    binarize=binarize)
