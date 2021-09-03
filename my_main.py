@@ -353,11 +353,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
 
         
-        tau = 10.0
-        delta = 0.001
+        tau = 1.0
+        delta = 1.0
         if training:
             #computing gradient and do SGD step 
-            model_backup = copy.deepcopy(model)
             backup_params={} 
             hardtanh_params = {}
 
