@@ -353,9 +353,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
 
         
-        tau = 0.01
-        delta = 1.0
-        eta = 0.01
+        delta =1.0
+        eta = 0.5
+        min_dt = -1.0
+        max_dt = 1.0
         
         if training:
             #computing gradient and do SGD step 
@@ -367,11 +368,13 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                 if if_binary(n):
                     backup_params[n] = copy.deepcopy(p.data)
                     scaled_data = p.data/delta
-                    wstar = F.hardtanh(scaled_data, min_val=-1.0, max_val=1.0)
+                    wstar = F.hardtanh(scaled_data, min_val=min_dt, max_val=max_dt)
                     p.data.copy_(wstar) 
                     hardtanh_params[n] = copy.deepcopy(wstar)
 
             #Compute gradient w.r.t. w*
+            output = model(input_var)
+            loss = criterion(output, target_var)
             optimizer.zero_grad()
             loss.backward()
 
@@ -386,12 +389,14 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     p.data.copy_(hardtanh_params[n])
                     # p.data.copy_(torch.sign(hardtanh_params[n]))
 
+            # min_tau = 1e10
+            # max_tau = 0
             for n, p in model.named_parameters():
                 if if_binary(n):
 
                     tau_vec = (1.0/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    g = p.grad.data
+                    g = p.grad.data + 0.000000000001
                     # Compute tau 
                     mask_pos_grad=p.grad.data >= 0 
                     mask_neg_grad = ~mask_pos_grad
@@ -401,22 +406,33 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     
                     curr_mask = mask_neg_x & mask_neg_grad
 
-                    tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
+                    # tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
+                    tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask])
 
                     curr_mask = mask_pos_x & mask_pos_grad
-                    tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
+                    # tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
+                    tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask])
+
+                    # if (torch.min(tau_vec).item() < min_tau):
+                    #     min_tau = torch.min(tau_vec).item() 
+                        
+                    # if (torch.max(tau_vec).item() > max_tau):
+                    #     max_tau = torch.max(tau_vec).item() 
+                    #     print('updated max ', max_tau)
+                    #     print('Min g', torch.min(g[curr_mask]))
+
+                    # pdb.set_trace()
 
 
-
-                    # tau_vec = 
                     # wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
                     wstar = hardtanh_params[n] 
                     wbar = (p.data - tau_vec * p.grad)/delta
-                    wbar = F.hardtanh(wbar, min_val=-1.0, max_val=1.0)
+                    wbar = F.hardtanh(wbar, min_val=min_dt, max_val=max_dt)
 
                     # Use autograd to update theta -> This should be done in closed-form
                     tt = Variable(p.data, requires_grad=True)
-                    deltaE = 1.0/tau/inputs.size(0) * (torch.norm(tt - wbar) - torch.norm(tt-wstar)).sum()
+
+                    deltaE = 1.0/inputs.size(0) * (torch.norm((tt - wbar)/tau_vec) - torch.norm((tt-wstar)/tau_vec)).sum()
                     deltaE.backward()
                     p.grad.data.copy_(tt.grad)
                     
