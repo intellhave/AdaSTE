@@ -70,7 +70,7 @@ parser.add_argument('--freeze_epoch', default=-1, type=int,
         help='Epoch to freeze quantization')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
         help='optimizer function used')
-parser.add_argument('--lr', '--learning_rate', default=0.1, type=float,
+parser.add_argument('--lr', '--learning_rate', default=0.01, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
@@ -353,8 +353,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
 
         
-        tau = 1.0
+        tau = 0.01
         delta = 1.0
+        eta = 0.01
+        
         if training:
             #computing gradient and do SGD step 
             backup_params={} 
@@ -363,9 +365,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             # Compute w* before applying backward()
             for n, p in model.named_parameters():
                 if if_binary(n):
-                    wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
-                    p.data.copy_(wstar)
                     backup_params[n] = copy.deepcopy(p.data)
+                    scaled_data = p.data/delta
+                    wstar = F.hardtanh(scaled_data, min_val=-1.0, max_val=1.0)
+                    p.data.copy_(wstar) 
                     hardtanh_params[n] = copy.deepcopy(wstar)
 
             #Compute gradient w.r.t. w*
@@ -373,7 +376,6 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             loss.backward()
 
             #Now,restore the parameters
-            # with torch.no_grad():
             for n,p in model.named_parameters():
                 if if_binary(n):
                     p.data.copy_(backup_params[n])
@@ -382,19 +384,41 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             for n, p in bin_model.named_parameters():
                 if if_binary(n):
                     p.data.copy_(hardtanh_params[n])
+                    # p.data.copy_(torch.sign(hardtanh_params[n]))
 
-            # pdb.set_trace()
             for n, p in model.named_parameters():
                 if if_binary(n):
-                    wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
-                    wbar = p.data - tau * p.grad
+
+                    tau_vec = (1.0/32)*torch.ones_like(p.data)
+                    y = p.data/delta
+                    g = p.grad.data
+                    # Compute tau 
+                    mask_pos_grad=p.grad.data >= 0 
+                    mask_neg_grad = ~mask_pos_grad
+
+                    mask_pos_x = p.data >= delta
+                    mask_neg_x = p.data <= -delta
+                    
+                    curr_mask = mask_neg_x & mask_neg_grad
+
+                    tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
+
+                    curr_mask = mask_pos_x & mask_pos_grad
+                    tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
+
+
+
+                    # tau_vec = 
+                    # wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
+                    wstar = hardtanh_params[n] 
+                    wbar = (p.data - tau_vec * p.grad)/delta
+                    wbar = F.hardtanh(wbar, min_val=-1.0, max_val=1.0)
 
                     # Use autograd to update theta -> This should be done in closed-form
                     tt = Variable(p.data, requires_grad=True)
-                    deltaE = 1/tau * (torch.norm(tt - wbar) - torch.norm(tt-wstar)).sum()
+                    deltaE = 1.0/tau/inputs.size(0) * (torch.norm(tt - wbar) - torch.norm(tt-wstar)).sum()
                     deltaE.backward()
                     p.grad.data.copy_(tt.grad)
-                    # pdb.set_trace()
                     
             # optimizer.zero_grad()
             # loss.backward()
