@@ -70,7 +70,7 @@ parser.add_argument('--freeze_epoch', default=-1, type=int,
         help='Epoch to freeze quantization')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
         help='optimizer function used')
-parser.add_argument('--lr', '--learning_rate', default=0.01, type=float,
+parser.add_argument('--lr', '--learning_rate', default=0.1, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
@@ -353,7 +353,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
 
         
-        delta = 1.0
+        delta = 0.001
         eta = 0.7
         min_dt = -1.0
         max_dt = 1.0
@@ -371,13 +371,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     wstar = F.hardtanh(scaled_data, min_val=min_dt, max_val=max_dt)
                     p.data.copy_(wstar) 
                     hardtanh_params[n] = copy.deepcopy(wstar)
+                else:
+                    hardtanh_params[n] = copy.deepcopy(p.data)
 
             #Compute gradient w.r.t. w*
-
-            # Debug: Output the model parameters
-            for n, p in model.named_parameters():
-                print(p.data)
-
             output = model(input_var)
             loss = criterion(output, target_var)
             optimizer.zero_grad()
@@ -390,8 +387,8 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
             # With wstar and grad, we can now compute delta E and update paramteters 
             for n, p in bin_model.named_parameters():
-                if if_binary(n):
-                    p.data.copy_(hardtanh_params[n])
+                # if if_binary(n):
+                p.data.copy_(hardtanh_params[n])
                     # p.data.copy_(torch.sign(hardtanh_params[n]))
 
             # min_tau = 1e10
