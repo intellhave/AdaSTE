@@ -24,6 +24,12 @@ def get_dataset(name, split='train', transform=None,
                                 transform=transform,
                                 target_transform=target_transform,
                                 download=download)
+    elif name=='mnist':
+        return datasets.MNIST(root=_dataset_path['mnist'],
+                                train=train,
+                                transform=transform,
+                                target_transform=target_transform,
+                                download=download)
     elif name == 'cifar100':
         return datasets.CIFAR100(root=_dataset_path['cifar100'],
                                  train=train,

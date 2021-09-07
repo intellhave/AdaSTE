@@ -46,7 +46,7 @@ parser.add_argument('--input_size', type=int, default=None,
         help='image input size')
 parser.add_argument('--model_config', default='',
         help='additional architecture configuration')
-parser.add_argument('--type', default='torch.FloatTensor',
+parser.add_argument('--type', default='torch.cuda.FloatTensor',
         help='type of tensor - e.g torch.cuda.HalfTensor')
 parser.add_argument('--gpus', default='0',
         help='gpus used for training - e.g 0,1,3')
@@ -113,7 +113,6 @@ def main():
     logging.debug("run arguments: %s", args)
 
     writer = TensorboardWriter(args.tb_dir)
-    args.gpus = None
     logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
     bin_model = models.__dict__[args.model]
@@ -325,6 +324,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             target = target.cuda()
 
         input_var = Variable(inputs.type(args.type), volatile = not training)
+        # target_var = Variable(target.type(args.type), volatile = not training)
         target_var = Variable(target)
 
         #compute output 
@@ -353,7 +353,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
 
         
-        delta = 0.001
+        delta = 1.0
         eta = 0.7
         min_dt = -1.0
         max_dt = 1.0
@@ -387,9 +387,11 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
             # With wstar and grad, we can now compute delta E and update paramteters 
             for n, p in bin_model.named_parameters():
-                # if if_binary(n):
-                p.data.copy_(hardtanh_params[n])
-                    # p.data.copy_(torch.sign(hardtanh_params[n]))
+                if if_binary(n):
+                    p.data.copy_(torch.sign(hardtanh_params[n]))
+                    # p.data.copy_(hardtanh_params[n])
+                else:
+                    p.data.copy_(hardtanh_params[n])
 
             # min_tau = 1e10
             # max_tau = 0

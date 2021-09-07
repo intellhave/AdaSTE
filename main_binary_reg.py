@@ -347,6 +347,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             br=0.0, bin_op=None, projection_mode=None, binarize=False):
     if args.gpus and len(args.gpus) > 1:
         model = torch.nn.DataParallel(model, args.gpus)
+
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -393,6 +394,10 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
                 bin_op.binarize(mode='stochastic')
                 # pdb.set_trace()
         # compute output
+        # # Debug: Output the model parameters
+        # for n, p in model.named_parameters():
+        #     print(p.data)
+            
         output = model(input_var)
         loss = criterion(output, target_var)
         # loss_reg = loss + br * binary_reg(model)
