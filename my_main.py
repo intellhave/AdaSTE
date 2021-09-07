@@ -304,6 +304,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         br=0.0, bin_op=None, projection_mode=None, binarize=False):
 
     if args.gpus and len(args.gpus) > 1:
+        print('GPU')
         model = torch.nn.DataParallel(model, args.gpus)
 
     batch_time = AverageMeter()
@@ -388,8 +389,8 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             # With wstar and grad, we can now compute delta E and update paramteters 
             for n, p in bin_model.named_parameters():
                 if if_binary(n):
-                    p.data.copy_(torch.sign(hardtanh_params[n]))
-                    # p.data.copy_(hardtanh_params[n])
+                    # p.data.copy_(torch.sign(hardtanh_params[n]))
+                    p.data.copy_(hardtanh_params[n])
                 else:
                     p.data.copy_(hardtanh_params[n])
 
@@ -400,7 +401,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
                     tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    g = p.grad.data
+                    g = p.grad.data + 1e-8
                     # Compute tau 
                     mask_pos_grad=p.grad.data >= 0 
                     mask_neg_grad = ~mask_pos_grad

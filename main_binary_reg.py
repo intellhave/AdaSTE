@@ -47,7 +47,7 @@ parser.add_argument('--input_size', type=int, default=None,
                     help='image input size')
 parser.add_argument('--model_config', default='',
                     help='additional architecture configuration')
-parser.add_argument('--type', default='torch.FloatTensor',
+parser.add_argument('--type', default='torch.cuda.FloatTensor',
                     help='type of tensor - e.g torch.cuda.HalfTensor')
 parser.add_argument('--gpus', default='0',
                     help='gpus used for training - e.g 0,1,3')
@@ -115,15 +115,13 @@ def main():
 
     writer = TensorboardWriter(args.tb_dir)
 
-    # if 'cuda' in args.type:
-    #     args.gpus = [int(i) for i in args.gpus.split(',')]
-    #     torch.cuda.set_device(args.gpus[0])
-    #     cudnn.benchmark = True
-    # else:
-    #     args.gpus = None
+    if 'cuda' in args.type:
+        args.gpus = [int(i) for i in args.gpus.split(',')]
+        torch.cuda.set_device(args.gpus[0])
+        cudnn.benchmark = True
+    else:
+        args.gpus = None
 
-    # args.gpus = None
-    args.gpus = None
     # create model
     logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
