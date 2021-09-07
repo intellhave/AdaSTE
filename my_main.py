@@ -353,8 +353,8 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
 
         
-        delta =1.0
-        eta = 0.5
+        delta = 1.0
+        eta = 0.7
         min_dt = -1.0
         max_dt = 1.0
         
@@ -373,6 +373,11 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     hardtanh_params[n] = copy.deepcopy(wstar)
 
             #Compute gradient w.r.t. w*
+
+            # Debug: Output the model parameters
+            for n, p in model.named_parameters():
+                print(p.data)
+
             output = model(input_var)
             loss = criterion(output, target_var)
             optimizer.zero_grad()
@@ -394,9 +399,9 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             for n, p in model.named_parameters():
                 if if_binary(n):
 
-                    tau_vec = (1.0/32)*torch.ones_like(p.data)
+                    tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    g = p.grad.data + 0.000000000001
+                    g = p.grad.data
                     # Compute tau 
                     mask_pos_grad=p.grad.data >= 0 
                     mask_neg_grad = ~mask_pos_grad
@@ -406,12 +411,12 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     
                     curr_mask = mask_neg_x & mask_neg_grad
 
-                    # tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
-                    tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask])
+                    tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
+                    # tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask])
 
                     curr_mask = mask_pos_x & mask_pos_grad
-                    # tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
-                    tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask])
+                    tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
+                    # tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask])
 
                     # if (torch.min(tau_vec).item() < min_tau):
                     #     min_tau = torch.min(tau_vec).item() 
