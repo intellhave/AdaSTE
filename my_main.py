@@ -431,13 +431,13 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
                     # wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
                     wstar = hardtanh_params[n] 
-                    wbar = (p.data - tau_vec * p.grad)/delta
+                    wbar = (p.data/delta - tau_vec * p.grad)
                     wbar = F.hardtanh(wbar, min_val=min_dt, max_val=max_dt)
 
                     # Use autograd to update theta -> This should be done in closed-form
                     tt = Variable(p.data, requires_grad=True)
 
-                    deltaE = 1.0/inputs.size(0) * (torch.norm((tt - wbar)/tau_vec) - torch.norm((tt-wstar)/tau_vec)).sum()
+                    deltaE = 1.0/inputs.size(0) * (torch.norm((tt - wbar)/torch.square(tau_vec)) - torch.norm((tt-wstar)/torch.square(tau_vec))).sum()
                     deltaE.backward()
                     p.grad.data.copy_(tt.grad)
                     
