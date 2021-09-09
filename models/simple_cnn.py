@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F 
 
+
 class SimpleCNN(nn.Module):
     def __init__(self):
         super(SimpleCNN, self).__init__()
@@ -29,3 +30,5 @@ class SimpleCNN(nn.Module):
 
 def simple_cnn(**kwargs):
     return SimpleCNN()
+    # return SimpleMLP()
+

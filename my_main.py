@@ -94,7 +94,7 @@ parser.add_argument('--no_adjust', action='store_true',
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
         help='evaluate model FILE on validation set')
 
-parser.add_argument('--delta_decrease_epoch', default=3, type=int, help='Number of epoch to reduce delta (delta = delta * 0.1)')
+parser.add_argument('--delta_decrease_epoch', default=5, type=int, help='Number of epoch to reduce delta (delta = delta * 0.1)')
 
 def main():
     global args, best_prec1
@@ -219,7 +219,7 @@ def main():
         for epoch in range(args.start_epoch, args.epochs):
 
             if ((epoch+1) % args.delta_decrease_epoch == 0) and  epoch > 10:
-                delta = delta * 0.1
+                delta = max(1e-8, delta * 0.1)
                 print('Delta changed to ', delta)
 
             # Training
@@ -308,10 +308,6 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
     top1 = AverageMeter()
     top5 = AverageMeter()
 
-    bin_losses = AverageMeter()
-    bin_top1 = AverageMeter()
-    bin_top5 = AverageMeter()
-
     end = time.time()
 
     for i, (inputs, target) in enumerate(data_loader):
@@ -321,8 +317,11 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             target = target.cuda()
 
         input_var = Variable(inputs.type(args.type), volatile = not training)
-        # input_var = input_var.reshape(-1, 28*28)
         target_var = Variable(target)
+
+        # If the model is MLP (for MNIST), need to reshape it 
+        if args.model == 'simple_mlp':
+            input_var = input_var.reshape(-1, 28*28)
 
         #compute output 
         output = model(input_var)
@@ -403,36 +402,41 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     mask_neg_x = p.data <= -delta
                     
                     curr_mask = mask_neg_x & mask_neg_grad
-
-                    tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
-                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] - 1), 1/(1-eta) * ((y[curr_mask]+1)))
+                    tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 
+                            1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
+                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] - 1), 
+                            1/(1-eta) * ((y[curr_mask]+1)))
 
                     curr_mask = mask_pos_x & mask_pos_grad
-                    tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
-                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] + 1), 1/(1-eta) * ((y[curr_mask]-1)))
+                    tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 
+                            1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
+                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] + 1), 
+                            1/(1-eta) * ((y[curr_mask]-1)))
 
-                    wstar = hardtanh_params[n] 
                     wbar = F.hardtanh(wbar, min_val=min_dt, max_val=max_dt)
 
                     # Use autograd to update theta -> This should be done in closed-form
                     tt = Variable(p.data, requires_grad=True)
-
                     sqrt_tau = torch.sqrt(tau_vec)
-                    inftau = torch.isinf(tau_vec)
+                    inftau = torch.isinf(tau_vec) | torch.isnan(tau_vec)
                     sqrt_tau[inftau] = 1
                     wbar[inftau] = tt[inftau]
-                    dE = (torch.norm((tt - wbar)/sqrt_tau) - torch.norm((tt-wstar)/sqrt_tau))
+
+                    wstar = hardtanh_params[n] 
+                    dE = ((torch.norm((tt - wbar)/sqrt_tau)) 
+                            - (torch.norm((tt-wstar)/sqrt_tau)))
                     deltaE = dE.mean()
                     deltaE.backward()
+
+                    #Handle nan cases 
                     nangrad = torch.isnan(tt.grad.data)
                     tt.grad.data[nangrad] = 0
                     p.grad.data.copy_(delta * tt.grad.data)
-                # else:
-                    # p.grad.data.copy_(p.grad.data)
+                else:
+                    p.grad.data.copy_(p.grad.data)
 
             optimizer.step()
             
-
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
