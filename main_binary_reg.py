@@ -113,7 +113,7 @@ def main():
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
 
-    writer = TensorboardWriter(args.tb_dir)
+    writer = TensorboardWriter(args.tb_dir + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
     if 'cuda' in args.type:
         args.gpus = [int(i) for i in args.gpus.split(',')]
@@ -309,20 +309,20 @@ def main():
             #             title='Error@5', ylabel='error %')
             results.save()
             result_dict = {'train_loss': train_loss, 'val_loss': val_loss,
-                           'train_error1': 100 - train_prec1, 'val_error1': 100 - val_prec1,
-                           'train_error5': 100 - train_prec5, 'val_error5': 100 - val_prec5,
+                           'train_prec1': train_prec1, 'val_prec1': val_prec1,
+                           'train_prec5': train_prec5, 'val_prec5': val_prec5,
                            'val_loss_bin': val_loss_bin,
-                           'val_error1_bin': 100 - val_prec1_bin,
-                           'val_error5_bin': 100 - val_prec5_bin}
+                           'val_prec1_bin': val_prec1_bin,
+                           'val_prec5_bin': val_prec5_bin}
             writer.write(result_dict, epoch+1)
-            writer.write(binary_levels(model), epoch+1)
+            # writer.write(binary_levels(model), epoch+1)
             
             # Compute general quantization error
-            mode = 'ternary' if args.projection_mode == 'prox_ternary' else 'deterministic'
-            writer.write(bin_op.quantize_error(mode=mode), epoch+1)
-            writer.write(sign_changes(bin_op), epoch+1)
-            if bin_op.ttq:
-                writer.write(bin_op.ternary_vals, epoch+1)
+            # mode = 'ternary' if args.projection_mode == 'prox_ternary' else 'deterministic'
+            # writer.write(bin_op.quantize_error(mode=mode), epoch+1)
+            # writer.write(sign_changes(bin_op), epoch+1)
+            # if bin_op.ttq:
+            #     writer.write(bin_op.ternary_vals, epoch+1)
             # writer.export()
 
             # Optionally freeze the binarization at a given epoch
@@ -378,6 +378,10 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             # target = target.cuda(async=True)
         input_var = Variable(inputs.type(args.type), volatile=not training)
         target_var = Variable(target)
+
+        # If the model is MLP (for MNIST), need to reshape it 
+        if args.model == 'simple_mlp':
+            input_var = input_var.reshape(-1, 28*28)
 
         # Binarize if projection mode is {lazy, stochastic bin} and in training
         if training:

@@ -219,7 +219,7 @@ def main():
         for epoch in range(args.start_epoch, args.epochs):
 
             if ((epoch+1) % args.delta_decrease_epoch == 0) and  epoch > 10:
-                delta = max(1e-8, delta * 0.1)
+                delta = max(1e-6, delta * 0.1)
                 print('Delta changed to ', delta)
 
             # Training
@@ -433,7 +433,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     tt.grad.data[nangrad] = 0
                     p.grad.data.copy_(delta * tt.grad.data)
                 else:
-                    p.grad.data.copy_(p.grad.data)
+                    p.grad.data.copy_(delta * p.grad.data)
 
             optimizer.step()
             
