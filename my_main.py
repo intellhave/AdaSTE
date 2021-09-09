@@ -23,6 +23,9 @@ from reg import *
 from writer import * 
 
 
+# Assert errors if nan is found during computing gradients
+# torch.autograd.set_detect_anomaly(True)
+
 model_names = sorted(name for name in models.__dict__ 
         if name.islower() and not name.startswith("__") 
         and callable(models.__dict__[name]))
@@ -70,7 +73,7 @@ parser.add_argument('--freeze_epoch', default=-1, type=int,
         help='Epoch to freeze quantization')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
         help='optimizer function used')
-parser.add_argument('--lr', '--learning_rate', default=0.1, type=float,
+parser.add_argument('--lr', '--learning_rate', default=0.01, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
@@ -90,6 +93,8 @@ parser.add_argument('--no_adjust', action='store_true',
         help='Will not adjust learning rate')
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
         help='evaluate model FILE on validation set')
+
+parser.add_argument('--delta_decrease_epoch', default=3, type=int, help='Number of epoch to reduce delta (delta = delta * 0.1)')
 
 def main():
     global args, best_prec1
@@ -112,7 +117,7 @@ def main():
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
 
-    writer = TensorboardWriter(args.tb_dir)
+    writer = TensorboardWriter(args.tb_dir + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
     bin_model = models.__dict__[args.model]
@@ -178,7 +183,8 @@ def main():
             0 : {'optimizer': 'Adam', 'lr': args.lr},
         }
 
-    criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
+    # criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
+    criterion = nn.CrossEntropyLoss()
     criterion.type(args.type)
     model.type(args.type)
     bin_model.type(args.type)
@@ -208,35 +214,26 @@ def main():
         'prox_ternary', 'ttq'] else if_binary,
         ttq = (args.projection_mode=='ttq'))
 
+    delta = 1.0
     try:
         for epoch in range(args.start_epoch, args.epochs):
 
-            #train for one epoch
-            # Adjust binary regression mode if non-lazy projection 
-            if args.projection_mode in ['prox', 'prox_median', 'prox_tenary']:
-                br = args.reg_rate * epoch
-            else: 
-                br = args.binary_reg
+            if ((epoch+1) % args.delta_decrease_epoch == 0) and  epoch > 10:
+                delta = delta * 0.1
+                print('Delta changed to ', delta)
 
             # Training
             train_loss, train_prec1, train_prec5 = train(train_loader, 
-                    model, bin_model, criterion, epoch, optimizer, 
-                    br = br, bin_op = bin_op, projection_mode = args.projection_mode)
+                    model, bin_model, criterion, epoch, optimizer, delta = delta)
 
             # evaluate on validation set 
             val_loss, val_prec1, val_prec5 = validate(
                     val_loader, model, bin_model, criterion, epoch, 
-                    br=br, bin_op = bin_op, projection_mode=args.projection_mode,
-                    binarize=True)
-
-            val_loss_bin, val_prec1_bin, val_prec5_bin = validate(
-                val_loader, model, bin_model, criterion, epoch,
-                br=br, bin_op=bin_op, projection_mode=args.projection_mode,
-                binarize=True)
+                    delta = delta)
 
             if args.binary_reg > 1e-10 or args.reg_rate > 1e-10:
-                is_best = val_prec1_bin > best_prec1
-                best_prec1 = max(val_prec1_bin, best_prec1)
+                is_best = val_prec1 > best_prec1
+                best_prec1 = max(val_prec1, best_prec1)
             else:
                 is_best = val_prec1 > best_prec1
                 best_prec1 = max(val_prec1, best_prec1)
@@ -263,28 +260,26 @@ def main():
             results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
                         train_error1=100 - train_prec1, val_error1=100 - val_prec1,
                         train_error5=100 - train_prec5, val_error5=100 - val_prec5)
-            #results.plot(x='epoch', y=['train_loss', 'val_loss'],
-            #             title='Loss', ylabel='loss')
-            #results.plot(x='epoch', y=['train_error1', 'val_error1'],
-            #             title='Error@1', ylabel='error %')
-            #results.plot(x='epoch', y=['train_error5', 'val_error5'],
-            #             title='Error@5', ylabel='error %')
             results.save()
+            # result_dict = {'train_loss': train_loss, 'val_loss': val_loss,
+            #                'train_error1': 100 - train_prec1, 'val_error1': 100 - val_prec1,
+            #                'train_error5': 100 - train_prec5, 'val_error5': 100 - val_prec5,
+            #                'val_error1_bin': 100 - val_prec1_bin,
+            #                'val_error5_bin': 100 - val_prec5_bin}
+
             result_dict = {'train_loss': train_loss, 'val_loss': val_loss,
-                           'train_error1': 100 - train_prec1, 'val_error1': 100 - val_prec1,
-                           'train_error5': 100 - train_prec5, 'val_error5': 100 - val_prec5,
-                           'val_loss_bin': val_loss_bin,
-                           'val_error1_bin': 100 - val_prec1_bin,
-                           'val_error5_bin': 100 - val_prec5_bin}
+                           'train_prec1': train_prec1, 'val_prec1': val_prec1,
+                           'train_prec5': train_prec5, 'val_prec5': val_prec5,
+                        }
             writer.write(result_dict, epoch+1)
-            writer.write(binary_levels(model), epoch+1)
+            # writer.write(binary_levels(model), epoch+1)
             
             # Compute general quantization error
-            mode = 'ternary' if args.projection_mode == 'prox_ternary' else 'deterministic'
-            writer.write(bin_op.quantize_error(mode=mode), epoch+1)
-            writer.write(sign_changes(bin_op), epoch+1)
-            if bin_op.ttq:
-                writer.write(bin_op.ternary_vals, epoch+1)
+            # mode = 'ternary' if args.projection_mode == 'prox_ternary' else 'deterministic'
+            # writer.write(bin_op.quantize_error(mode=mode), epoch+1)
+            # writer.write(sign_changes(bin_op), epoch+1)
+            # if bin_op.ttq:
+            #     writer.write(bin_op.ternary_vals, epoch+1)
             # writer.export()
 
             # Optionally freeze the binarization at a given epoch
@@ -301,7 +296,7 @@ def main():
 
    
 def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, optimizer=None, 
-        br=0.0, bin_op=None, projection_mode=None, binarize=False):
+        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0):
 
     if args.gpus and len(args.gpus) > 1:
         print('GPU')
@@ -320,12 +315,13 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
     end = time.time()
 
     for i, (inputs, target) in enumerate(data_loader):
+
         data_time.update(time.time() - end)
         if args.gpus is not None:
             target = target.cuda()
 
         input_var = Variable(inputs.type(args.type), volatile = not training)
-        # target_var = Variable(target.type(args.type), volatile = not training)
+        # input_var = input_var.reshape(-1, 28*28)
         target_var = Variable(target)
 
         #compute output 
@@ -341,38 +337,37 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             bin_output = bin_output[0]
 
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data.item(), inputs.size(0))
-        top1.update(prec1.item(), inputs.size(0))
-        top5.update(prec5.item(), inputs.size(0))
-
+        # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         bin_prec1, bin_prec5 = accuracy(bin_output.data, target, topk=(1,5))
-        bin_losses.update(bin_loss.data.item(), inputs.size(0))
-        bin_top1.update(bin_prec1.item(), inputs.size(0))
-        bin_top5.update(bin_prec5.item(), inputs.size(0))
-        
+        top1.update(bin_prec1.item(), inputs.size(0))
+        top5.update(bin_prec5.item(), inputs.size(0))
+        losses.update(bin_loss.data.item(), inputs.size(0))
 
-
-        
-        delta = 1.0
-        eta = 0.7
+        eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
         
         if training:
-            #computing gradient and do SGD step 
+
+            # Dictionary to store the backup and quantized parameters
             backup_params={} 
             hardtanh_params = {}
 
-            # Compute w* before applying backward()
+            # Compute w* and assign them to the model before applying backward()
             for n, p in model.named_parameters():
                 if if_binary(n):
+                    # Store the current weights 
                     backup_params[n] = copy.deepcopy(p.data)
-                    scaled_data = p.data/delta
-                    wstar = F.hardtanh(scaled_data, min_val=min_dt, max_val=max_dt)
-                    p.data.copy_(wstar) 
+
+                    #Compute w*
+                    wstar = F.hardtanh(p.data/delta, min_val=min_dt, max_val=max_dt)
                     hardtanh_params[n] = copy.deepcopy(wstar)
+
+                    # Assign w* to the model parameters
+                    p.data.copy_(wstar) 
                 else:
+                    # Do this to also copy non-binary 
+                    # parameters to the evaluation network 
                     hardtanh_params[n] = copy.deepcopy(p.data)
 
             #Compute gradient w.r.t. w*
@@ -381,110 +376,97 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             optimizer.zero_grad()
             loss.backward()
 
-            #Now,restore the parameters
-            for n,p in model.named_parameters():
-                if if_binary(n):
-                    p.data.copy_(backup_params[n])
+            #Now, restore the parameters
+            with torch.no_grad():
+                for n,p in model.named_parameters():
+                    if if_binary(n):
+                        p.data.copy_(backup_params[n])
+
 
             # With wstar and grad, we can now compute delta E and update paramteters 
-            for n, p in bin_model.named_parameters():
-                if if_binary(n):
-                    # p.data.copy_(torch.sign(hardtanh_params[n]))
-                    p.data.copy_(hardtanh_params[n])
-                else:
+            with torch.no_grad():
+                for n, p in bin_model.named_parameters():
                     p.data.copy_(hardtanh_params[n])
 
-            # min_tau = 1e10
-            # max_tau = 0
             for n, p in model.named_parameters():
                 if if_binary(n):
-
                     tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    g = p.grad.data + 1e-8
-                    # Compute tau 
-                    mask_pos_grad=p.grad.data >= 0 
-                    mask_neg_grad = ~mask_pos_grad
+                    g = p.grad.data
+                    wbar = (y - tau_vec * g)
 
+                    # Compute tau 
+                    mask_pos_grad = p.grad.data >= 0 
+                    mask_neg_grad = p.grad.data < 0
+                    # X
                     mask_pos_x = p.data >= delta
                     mask_neg_x = p.data <= -delta
                     
                     curr_mask = mask_neg_x & mask_neg_grad
 
                     tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
-                    # tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask])
+                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] - 1), 1/(1-eta) * ((y[curr_mask]+1)))
 
                     curr_mask = mask_pos_x & mask_pos_grad
                     tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
-                    # tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask])
+                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] + 1), 1/(1-eta) * ((y[curr_mask]-1)))
 
-                    # if (torch.min(tau_vec).item() < min_tau):
-                    #     min_tau = torch.min(tau_vec).item() 
-                        
-                    # if (torch.max(tau_vec).item() > max_tau):
-                    #     max_tau = torch.max(tau_vec).item() 
-                    #     print('updated max ', max_tau)
-                    #     print('Min g', torch.min(g[curr_mask]))
-
-                    # pdb.set_trace()
-
-
-                    # wstar = F.hardtanh(p.data, min_val=-delta, max_val=delta)
                     wstar = hardtanh_params[n] 
-                    wbar = (p.data/delta - tau_vec * p.grad)
                     wbar = F.hardtanh(wbar, min_val=min_dt, max_val=max_dt)
 
                     # Use autograd to update theta -> This should be done in closed-form
                     tt = Variable(p.data, requires_grad=True)
 
-                    deltaE = 1.0/inputs.size(0) * (torch.norm((tt - wbar)/torch.square(tau_vec)) - torch.norm((tt-wstar)/torch.square(tau_vec))).sum()
+                    sqrt_tau = torch.sqrt(tau_vec)
+                    inftau = torch.isinf(tau_vec)
+                    sqrt_tau[inftau] = 1
+                    wbar[inftau] = tt[inftau]
+                    dE = (torch.norm((tt - wbar)/sqrt_tau) - torch.norm((tt-wstar)/sqrt_tau))
+                    deltaE = dE.mean()
                     deltaE.backward()
-                    p.grad.data.copy_(tt.grad)
-                    
-            # optimizer.zero_grad()
-            # loss.backward()
+                    nangrad = torch.isnan(tt.grad.data)
+                    tt.grad.data[nangrad] = 0
+                    p.grad.data.copy_(delta * tt.grad.data)
+                # else:
+                    # p.grad.data.copy_(p.grad.data)
+
             optimizer.step()
+            
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
         if i % args.print_freq == 0:
-            logging.info('{phase} - Epoch: [{0}][{1}/{2}]\t'
+            logging.info('{phase} - Epoch: [{0}][{1}/{2}], Delta : {delta}\t'
                          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                          'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                         'Bin_Prec@1 {bin_top1.val:.3f} ({bin_top1.avg:.3f})\t'
-                         'Bin_Prec@5 {bin_top5.val:.3f} ({bin_top5.avg:.3f})\t'
                          'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                          'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                             epoch, i, len(data_loader),
+                             epoch, i, len(data_loader), delta = delta,
                              phase='TRAINING' if training else 'EVALUATING',
-                             batch_time=batch_time,
-                             data_time=data_time, loss=losses, bin_top1 = bin_top1, 
-                             bin_top5=bin_top5, top1=top1, top5=top5))
+                             batch_time=batch_time, data_time=data_time, loss=losses,  
+                             top1=top1, top5=top5))
 
     return losses.avg, top1.avg, top5.avg
 
         
 def train(data_loader, model, bin_model, criterion, epoch, optimizer,
-          br=0.0, bin_op=None, projection_mode=None):
+          br=0.0, bin_op=None, projection_mode=None, delta = 1.0):
     # switch to train mode
     model.train()
     return forward(data_loader, model, bin_model, criterion, epoch,
-                   training=True, optimizer=optimizer,
-                   br=br, bin_op=bin_op, projection_mode=projection_mode)
+                   training=True, optimizer=optimizer, delta = delta)
 
 
 def validate(data_loader, model, bin_model, criterion, epoch,
              br=0.0, bin_op=None, projection_mode=None,
-             binarize=False):
+             binarize=False, delta = 1.0):
     # switch to evaluate mode
     model.eval()
     return forward(data_loader, model, bin_model, criterion, epoch,
-                   training=False, optimizer=None,
-                   br=br, bin_op=bin_op, projection_mode=projection_mode,
-                   binarize=binarize)
+                   training=False, optimizer=None, delta = delta)
 
 
 if __name__ == '__main__':
