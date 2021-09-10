@@ -4,6 +4,7 @@ Neural Network Quantization
 ### Pytorch 1.9 compatibility changes
 Resolved
 * changed `correct_k = correct[:k].view(-1).float().sum(0)` to `correct_k = correct[:k].reshape(-1).float().sum(0)` in accuracy function in utils.py.
+
 TODO:
 1. `my_main.py:319: UserWarning: volatile was removed and now has no effect. Use "with torch.no_grad():" instead.`
 2. `my_main.py:106: SyntaxWarning: "is" with a literal. Did you mean "=="? if args.save is '':`
