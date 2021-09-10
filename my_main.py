@@ -316,7 +316,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         if args.gpus is not None:
             target = target.cuda()
 
-        input_var = Variable(inputs.type(args.type), volatile = not training)
+        # input_var = Variable(inputs.type(args.type), volatile = not training)
+        with torch.no_grad():
+            input_var = Variable(inputs.type(args.type))
+
         target_var = Variable(target)
 
         # If the model is MLP (for MNIST), need to reshape it 
