@@ -103,7 +103,7 @@ def main():
 
     if args.evaluate:
         args.results_dir = '/tmp'
-    if args.save is '':
+    if args.save == '':
         args.save = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     save_path=os.path.join(args.results_dir, args.save)
@@ -124,7 +124,7 @@ def main():
 
     model_config = {'input_size': args.input_size, 'dataset':args.dataset}
 
-    if args.model_config is not '':
+    if args.model_config != '':
         model_config = dict(model_config, **literal_eval(args.model_config))
 
     # Prepare model and binary model 
@@ -316,7 +316,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         if args.gpus is not None:
             target = target.cuda()
 
-        input_var = Variable(inputs.type(args.type), volatile = not training)
+        # input_var = Variable(inputs.type(args.type), volatile = not training)
+        with torch.no_grad():
+            input_var = Variable(inputs.type(args.type))
+
         target_var = Variable(target)
 
         # If the model is MLP (for MNIST), need to reshape it 
