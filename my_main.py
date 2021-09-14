@@ -214,14 +214,16 @@ def main():
         'prox_ternary', 'ttq'] else if_binary,
         ttq = (args.projection_mode=='ttq'))
 
-    delta = 1.0
+    delta0 = 1.0
+    delta=delta0
+    epsillon = 1e-6
     try:
         for epoch in range(args.start_epoch, args.epochs):
             if not(args.no_adjust):
                 optimizer = adjust_optimizer(optimizer, epoch, regime)
 
-            if ((epoch+1) % args.delta_decrease_epoch == 0) and  epoch > 10:
-                delta = max(1e-6, delta * 0.95)
+            if ((epoch+1) % args.delta_decrease_epoch == 0):
+                delta = epsilon + delta0 - epoch*delta0/args.epochs
             print('Delta changed to ', delta)
 
             # Training
