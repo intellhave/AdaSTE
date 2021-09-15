@@ -73,7 +73,7 @@ parser.add_argument('--freeze_epoch', default=-1, type=int,
         help='Epoch to freeze quantization')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
         help='optimizer function used')
-parser.add_argument('--lr', '--learning_rate', default=10, type=float,
+parser.add_argument('--lr', '--learning_rate', default=100, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
@@ -207,6 +207,7 @@ def main():
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
+    print('learning rate: ', args.lr)
     trainable_params = filter(lambda p: p.requires_grad,  model.parameters())
     optimizer = torch.optim.SGD(trainable_params, lr=args.lr)
     logging.info('training regime : %s', regime)
@@ -215,7 +216,7 @@ def main():
         'prox_ternary', 'ttq'] else if_binary,
         ttq = (args.projection_mode=='ttq'))
 
-    delta0 = 0.0001
+    delta0 = 0.000001
     delta=delta0
     epsillon = 1e-6
     eta = args.init_eta
