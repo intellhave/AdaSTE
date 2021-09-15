@@ -73,7 +73,7 @@ parser.add_argument('--freeze_epoch', default=-1, type=int,
         help='Epoch to freeze quantization')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
         help='optimizer function used')
-parser.add_argument('--lr', '--learning_rate', default=0.01, type=float,
+parser.add_argument('--lr', '--learning_rate', default=10, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
@@ -95,6 +95,7 @@ parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
         help='evaluate model FILE on validation set')
 
 parser.add_argument('--delta_decrease_epoch', default=5, type=int, help='Number of epoch to reduce delta (delta = delta * 0.1)')
+parser.add_argument('--init_eta', default=0.001, type=int, help='Initial value for eta')
 
 def main():
     global args, best_prec1
@@ -214,26 +215,29 @@ def main():
         'prox_ternary', 'ttq'] else if_binary,
         ttq = (args.projection_mode=='ttq'))
 
-    delta0 = 1.0
+    delta0 = 0.0001
     delta=delta0
     epsillon = 1e-6
+    eta = args.init_eta
+
     try:
         for epoch in range(args.start_epoch, args.epochs):
             if not(args.no_adjust):
                 optimizer = adjust_optimizer(optimizer, epoch, regime)
 
-            if ((epoch+1) % args.delta_decrease_epoch == 0):
-                delta = epsilon + delta0 - epoch*delta0/args.epochs
-            print('Delta changed to ', delta)
+            # if ((epoch+1) % args.delta_decrease_epoch == 0):
+            #     delta = epsillon + delta0 - epoch*delta0/args.epochs
+            # print('Delta changed to ', delta)
 
             # Training
             train_loss, train_prec1, train_prec5 = train(train_loader, 
-                    model, bin_model, criterion, epoch, optimizer, delta = delta)
+                    model, bin_model, criterion, epoch, 
+                    optimizer, delta = delta, eta = eta)
 
             # evaluate on validation set 
             val_loss, val_prec1, val_prec5 = validate(
                     val_loader, model, bin_model, criterion, epoch, 
-                    delta = delta)
+                    delta = delta, eta = eta)
 
             if args.binary_reg > 1e-10 or args.reg_rate > 1e-10:
                 is_best = val_prec1 > best_prec1
@@ -300,7 +304,7 @@ def main():
 
    
 def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, optimizer=None, 
-        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0):
+        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0, eta = 1.0):
 
     if args.gpus and len(args.gpus) > 1:
         print('GPU')
@@ -349,7 +353,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         top5.update(bin_prec5.item(), inputs.size(0))
         losses.update(bin_loss.data.item(), inputs.size(0))
 
-        eta = 0.25
+        # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
         
@@ -438,9 +442,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     #Handle nan cases 
                     nangrad = torch.isnan(tt.grad.data)
                     tt.grad.data[nangrad] = 0
-                    p.grad.data.copy_(delta * tt.grad.data)
+                    p.grad.data.copy_(tt.grad.data)
+                    # p.grad.data.copy_(delta * tt.grad.data)
                 else:
-                    p.grad.data.copy_(delta * p.grad.data)
+                    p.grad.data.copy_(p.grad.data)
 
             optimizer.step()
             
@@ -464,20 +469,20 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
         
 def train(data_loader, model, bin_model, criterion, epoch, optimizer,
-          br=0.0, bin_op=None, projection_mode=None, delta = 1.0):
+          br=0.0, bin_op=None, projection_mode=None, delta = 1.0, eta = 1.0):
     # switch to train mode
     model.train()
     return forward(data_loader, model, bin_model, criterion, epoch,
-                   training=True, optimizer=optimizer, delta = delta)
+                   training=True, optimizer=optimizer, delta = delta, eta = eta)
 
 
 def validate(data_loader, model, bin_model, criterion, epoch,
              br=0.0, bin_op=None, projection_mode=None,
-             binarize=False, delta = 1.0):
+             binarize=False, delta = 1.0, eta = 1.0):
     # switch to evaluate mode
     model.eval()
     return forward(data_loader, model, bin_model, criterion, epoch,
-                   training=False, optimizer=None, delta = delta)
+                   training=False, optimizer=None, delta = delta, eta = eta)
 
 
 if __name__ == '__main__':
