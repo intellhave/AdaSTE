@@ -216,7 +216,7 @@ def main():
         'prox_ternary', 'ttq'] else if_binary,
         ttq = (args.projection_mode=='ttq'))
 
-    delta0 = 0.000001
+    delta0 = 1e-6
     delta=delta0
     epsillon = 1e-6
     eta = args.init_eta
@@ -435,8 +435,8 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     wbar[inftau] = tt[inftau]
 
                     wstar = hardtanh_params[n] 
-                    dE = ((torch.norm((tt - wbar)/sqrt_tau)) 
-                            - (torch.norm((tt-wstar)/sqrt_tau)))
+                    dE = ((torch.norm((tt/delta - wbar)/sqrt_tau)) 
+                            - (torch.norm((tt/delta- wstar)/sqrt_tau)))
                     deltaE = dE.mean()
                     deltaE.backward()
 
