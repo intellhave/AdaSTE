@@ -73,7 +73,7 @@ parser.add_argument('--freeze_epoch', default=-1, type=int,
         help='Epoch to freeze quantization')
 parser.add_argument('--optimizer', default='SGD', type=str, metavar='OPT',
         help='optimizer function used')
-parser.add_argument('--lr', '--learning_rate', default=100, type=float,
+parser.add_argument('--lr', '--learning_rate', default=0.01, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
@@ -95,7 +95,7 @@ parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
         help='evaluate model FILE on validation set')
 
 parser.add_argument('--delta_decrease_epoch', default=5, type=int, help='Number of epoch to reduce delta (delta = delta * 0.1)')
-parser.add_argument('--init_eta', default=0.001, type=int, help='Initial value for eta')
+parser.add_argument('--init_eta', default=1.0667, type=int, help='Initial value for eta')
 
 def main():
     global args, best_prec1
@@ -407,44 +407,24 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     wbar = (y - tau_vec * g)
 
                     # Compute tau 
-                    mask_pos_grad = p.grad.data >= 0 
-                    mask_neg_grad = p.grad.data < 0
+                    mask_pos_grad = p.grad.data >= 1e-3
+                    mask_neg_grad = p.grad.data < -1e-3
                     # X
                     mask_pos_x = p.data >= delta
                     mask_neg_x = p.data <= -delta
                     
                     curr_mask = mask_neg_x & mask_neg_grad
-                    tau_vec[curr_mask] = torch.min((y[curr_mask] - 1)/g[curr_mask], 
-                            1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
-                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] - 1), 
-                            1/(1-eta) * ((y[curr_mask]+1)))
+                    wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
+                    tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask])
 
                     curr_mask = mask_pos_x & mask_pos_grad
-                    tau_vec[curr_mask] = torch.min((y[curr_mask] + 1)/g[curr_mask], 
-                            1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
-                    wbar[curr_mask] = y[curr_mask] - torch.min((y[curr_mask] + 1), 
-                            1/(1-eta) * ((y[curr_mask]-1)))
+                    wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]-1))
+                    tau_vec[curr_mask] = 1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask])
 
                     wbar = F.hardtanh(wbar, min_val=min_dt, max_val=max_dt)
-
-                    # Use autograd to update theta -> This should be done in closed-form
-                    tt = Variable(p.data, requires_grad=True)
-                    sqrt_tau = torch.sqrt(tau_vec)
-                    inftau = torch.isinf(tau_vec) | torch.isnan(tau_vec)
-                    sqrt_tau[inftau] = 1
-                    wbar[inftau] = tt[inftau]
-
                     wstar = hardtanh_params[n] 
-                    dE = ((torch.norm((tt/delta - wbar)/sqrt_tau)) 
-                            - (torch.norm((tt/delta- wstar)/sqrt_tau)))
-                    deltaE = dE.mean()
-                    deltaE.backward()
-
-                    #Handle nan cases 
-                    nangrad = torch.isnan(tt.grad.data)
-                    tt.grad.data[nangrad] = 0
-                    p.grad.data.copy_(tt.grad.data)
-                    # p.grad.data.copy_(delta * tt.grad.data)
+                    gr = (1/delta) * (wstar - wbar) / tau_vec
+                    p.grad.data.copy_(gr)
                 else:
                     p.grad.data.copy_(p.grad.data)
 
