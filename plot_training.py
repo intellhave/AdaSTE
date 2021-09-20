@@ -2,8 +2,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns; sns.set_style("whitegrid")
 
+# csvpath = "results/resnet20_FenBP_e600/results.csv"
 csvpath = "results/resnet20_FenBP/results.csv"
-csvpath = "results/resnet20_PQ/results.csv"
+# csvpath = "results/resnet20_PQ/results.csv"
 
 df = pd.read_csv(csvpath)
 

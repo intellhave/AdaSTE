@@ -401,6 +401,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         #     print(p.data)
             
         output = model(input_var)
+        
         loss = criterion(output, target_var)
         # loss_reg = loss + br * binary_reg(model)
         if type(output) is list:
@@ -419,6 +420,35 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             optimizer.zero_grad()
             loss.backward()
 
+            # if (epoch > 3)
+            #     conv1_out = model.conv1(input_var)
+            #     conv1_atv = F.relu(conv1_out)
+            #     conv2_out = model.conv2(conv1_atv)
+            #     conv2_atv = F.relu(conv2_out)
+            #     pool2_out = F.max_pool2d(conv2_atv, 2)
+            #     drop1_out = model.dropout1(pool2_out)
+            #     drop1_out2 = torch.flatten(drop1_out, 1)
+            #     fc1_out = model.fc1(drop1_out2)
+            #     fc1_act = F.relu(fc1_out)
+            #     drop2_out = model.dropout2(fc1_act)
+            #     drop2_out_var = Variable(drop2_out, requires_grad = True)
+
+            #     fc2_out = model.fc2(drop2_out_var)
+            #     fc2_out_var = Variable(fc2_out, requires_grad=True)
+
+            #     output3 = F.log_softmax(fc2_out_var, dim=1)
+            #     loss3  = criterion(output3, target_var)
+            #     loss3.backward()
+
+            #     output2 = Variable(output.data, requires_grad=True)
+            #     loss2 = criterion(output2, target_var)
+            #     loss2.backward()
+
+            #     for n,p in model.named_parameters():
+            #         print(n)
+            #         pdb.set_trace()
+
+            
             # copy parameters according to quantization modes
             if projection_mode in ['lazy', 'stoch_bin']:
                 bin_op.restore()
