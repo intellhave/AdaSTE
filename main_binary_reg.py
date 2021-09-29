@@ -206,6 +206,8 @@ def main():
 
     # define loss function (criterion) and optimizer
     criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
+    # criterion = nn.MSELoss()
+    # pdb.set_trace()
     criterion.type(args.type)
     model.type(args.type)
 

@@ -89,6 +89,8 @@ def get_transform(name='imagenet', input_size=None,
                               scale_size=scale_size, normalize=normalize)
     elif 'cifar' in name:
         input_size = input_size or 32
+        normalize = {'mean': [0.4914, 0.4822, 0.4465], 'std': [0.2023, 0.1994, 0.2010]}
+        # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         if augment:
             scale_size = scale_size or 40
             return pad_random_crop(input_size, scale_size=scale_size,
@@ -98,7 +100,7 @@ def get_transform(name='imagenet', input_size=None,
             return scale_crop(input_size=input_size,
                               scale_size=scale_size, normalize=normalize)
     elif name == 'mnist':
-        normalize = {'mean': [0.5], 'std': [0.5]}
+        normalize = {'mean': [0.1307], 'std': [0.3081]}
         input_size = input_size or 28
         if augment:
             scale_size = scale_size or 32

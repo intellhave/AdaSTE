@@ -25,7 +25,6 @@ from writer import *
 
 # Assert errors if nan is found during computing gradients
 # torch.autograd.set_detect_anomaly(True)
-torch.backends.cudnn.benchmark
 
 model_names = sorted(name for name in models.__dict__ 
         if name.islower() and not name.startswith("__") 
@@ -106,7 +105,7 @@ def main():
 
     delta0 = args.init_delta
     delta=delta0
-    epsillon = 1e-7
+    epsillon = 1e-6
     eta = args.init_eta
 
     # args.lr = args.lr/delta
@@ -157,9 +156,8 @@ def main():
             checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
-        checkpoint=torch.load(checkpoint_file)
         best_prec1 = checkpoint['best_prec1']
-        # best_prec1 = best_prec1.cuda(args.gpus[0])
+        best_prec1 = best_prec1.cuda(args.gpus[0])
         model.load_state_dict(checkpoint['state_dict'])
         bin_model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
@@ -234,7 +232,6 @@ def main():
 
             # if ((epoch+1) % args.delta_decrease_epoch == 0):
             #     delta = epsillon + delta0 - epoch*delta0/args.epochs
-            #     # delta = epsillon + delta * 0.8 
             #     # delta = max(1e-6, delta*1e-6)
             # print('Delta changed to ', delta)
 
@@ -350,7 +347,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
-        gamma = 0.00001
+        gamma = 1e-1
         
         if training:
 
@@ -362,16 +359,17 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             for n, p in model.named_parameters():
                 if if_binary(n):
                     # Store the current weights 
-                    # backup_params[n] = copy.deepcopy(p.data)
+                    backup_params[n] = copy.deepcopy(p.data)
 
                     #Compute w*
                     wstar = F.hardtanh(p.data/delta, min_val=min_dt, max_val=max_dt)
                     hardtanh_params[n] = copy.deepcopy(wstar)
 
                     # Assign w* to the model parameters
-                    # p.data.copy_(wstar) 
+                    p.data.copy_(wstar) 
                 else:
-                    # Do this to also copy non-binary parameters to the evaluation network 
+                    # Do this to also copy non-binary 
+                    # parameters to the evaluation network 
                     hardtanh_params[n] = copy.deepcopy(p.data)
 
             #Compute gradient w.r.t. w*
@@ -381,35 +379,33 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             loss.backward()
 
             #Now, resto parameters
-            # with torch.no_grad():
-            #     for n,p in model.named_parameters():
-            #         if if_binary(n):
-            #             p.data.copy_(backup_params[n])
+            with torch.no_grad():
+                for n,p in model.named_parameters():
+                    if if_binary(n):
+                        p.data.copy_(backup_params[n])
 
 
             # With wstar and grad, we can now compute delta E and update paramteters 
             with torch.no_grad():
                 for n, p in bin_model.named_parameters():
-                    if if_binary(n):
-                        # p.data.copy_(hardtanh_params[n])
-                        if (epoch < 10000):
-                            p.data.copy_(hardtanh_params[n])
-                        else:
-                            # pdata = 0*torch.ones_like(hardtanh_params[n])
-                            # pdata[hardtanh_params[n] >= 1] =  1
-                            # pdata[hardtanh_params[n] <= -1] = -1
-                            # p.data.copy_(pdata)
-                            p.data.copy_(torch.sign(hardtanh_params[n]))
-                    else:
-                        p.data.copy_(hardtanh_params[n])
+                    # if (epoch > 10):
+                    #     pdata = 0*torch.ones_like(hardtanh_params[n])
+                    #     pdata[hardtanh_params[n] >= 1] =  1
+                    #     pdata[hardtanh_params[n] <= -1] = -1
+                    #     p.data.copy_(pdata)
+                    # else:
+                    p.data.copy_(hardtanh_params[n])
 
             for n, p in model.named_parameters():
                 if if_binary(n):
                     tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    # g = p.grad.data
-                    g = (hardtanh_params[n] - p.data)
+                    g = p.grad.data + gamma * (hardtanh_params[n] - p.data) + 1e-6 * torch.ones_like(p.data)
                     wbar = (y - tau_vec * g)
+
+                    # if epoch > 3:
+                    #     pdb.set_trace()
+                    
 
                     # Compute masks for x and grad
                     mask_pos_grad = p.grad.data >= 1e-12
@@ -429,12 +425,16 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                         tau_vec[curr_mask]), 
                         1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
 
+                    
+                    wbar = (y - tau_vec * g)
                     pre_wbar = wbar
                     wbar = F.hardtanh(pre_wbar, min_val=min_dt, max_val=max_dt)
                     wstar = hardtanh_params[n] 
-                    gr = p.grad.data + ((delta/delta) * (wstar - wbar) / tau_vec - gamma*g)
+                    gr = (1/delta) * (wstar - wbar) / tau_vec
+                    # if (epoch > 4):
+                    #     pdb.set_trace()
 
-                    p.grad.data.copy_(gr)
+                    p.grad.data.copy_(gr - gamma * (hardtanh_params[n] - p.data))
                 else:
                     p.grad.data.copy_(p.grad.data)
 

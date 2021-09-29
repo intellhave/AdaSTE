@@ -1,4 +1,4 @@
-import argparse
+import argparse 
 import os
 import time 
 import logging
@@ -24,8 +24,8 @@ from writer import *
 
 
 # Assert errors if nan is found during computing gradients
-# torch.autograd.set_detect_anomaly(True)
-torch.backends.cudnn.benchmark
+torch.autograd.set_detect_anomaly(True)
+torch.manual_seed(1)
 
 model_names = sorted(name for name in models.__dict__ 
         if name.islower() and not name.startswith("__") 
@@ -106,7 +106,7 @@ def main():
 
     delta0 = args.init_delta
     delta=delta0
-    epsillon = 1e-7
+    epsillon = 1e-6
     eta = args.init_eta
 
     # args.lr = args.lr/delta
@@ -158,7 +158,7 @@ def main():
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
         checkpoint=torch.load(checkpoint_file)
-        best_prec1 = checkpoint['best_prec1']
+        # best_prec1 = checkpoint['best_prec1']
         # best_prec1 = best_prec1.cuda(args.gpus[0])
         model.load_state_dict(checkpoint['state_dict'])
         bin_model.load_state_dict(checkpoint['state_dict'])
@@ -219,30 +219,36 @@ def main():
 
     print('learning rate: ', args.lr)
     trainable_params = filter(lambda p: p.requires_grad,  model.parameters())
-    optimizer = torch.optim.SGD(trainable_params, lr=args.lr)
+    optimizer = torch.optim.Adam(trainable_params, lr=args.lr)
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)    
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500)
+
+
     logging.info('training regime : %s', regime)
 
-    bin_op = BinOp(model, if_binary = if_binary_tern if args.projection_mode in [ 
-        'prox_ternary', 'ttq'] else if_binary,
-        ttq = (args.projection_mode=='ttq'))
+    # bin_op = BinOp(model, if_binary = if_binary_tern if args.projection_mode in [ 
+    #     'prox_ternary', 'ttq'] else if_binary,
+    #     ttq = (args.projection_mode=='ttq'))
 
 
     try:
         for epoch in range(args.start_epoch, args.epochs):
-            if not(args.no_adjust):
-                optimizer = adjust_optimizer(optimizer, epoch, regime)
+            # if not(args.no_adjust):
+            #     optimizer = adjust_optimizer(optimizer, epoch, regime)
 
+
+            print('Current learning rate: ', optimizer.param_groups[0]["lr"])
             # if ((epoch+1) % args.delta_decrease_epoch == 0):
             #     delta = epsillon + delta0 - epoch*delta0/args.epochs
-            #     # delta = epsillon + delta * 0.8 
             #     # delta = max(1e-6, delta*1e-6)
             # print('Delta changed to ', delta)
 
             # Training
             train_loss, train_prec1, train_prec5 = train(train_loader, 
                     model, bin_model, criterion, epoch, 
-                    optimizer, delta = delta, eta = eta)
+                    optimizer, delta = delta, eta = eta, scheduler=None)
 
+            # scheduler.step()
             # evaluate on validation set 
             val_loss, val_prec1, val_prec5 = validate(
                     val_loader, model, bin_model, criterion, epoch, 
@@ -298,7 +304,7 @@ def main():
 
    
 def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, optimizer=None, 
-        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0, eta = 1.0):
+        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0, eta = 1.0, scheduler = None):
 
     if args.gpus and len(args.gpus) > 1:
         print('GPU')
@@ -342,7 +348,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
         # measure accuracy and record loss
         # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        bin_prec1, bin_prec5 = accuracy(bin_output.data, target, topk=(1,5))
+        bin_prec1, bin_prec5 = accuracy(output.data, target, topk=(1,5))
         top1.update(bin_prec1.item(), inputs.size(0))
         top5.update(bin_prec5.item(), inputs.size(0))
         losses.update(bin_loss.data.item(), inputs.size(0))
@@ -350,28 +356,38 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
-        gamma = 0.00001
+        gamma = 1e-6
+        mu = 0.5
         
         if training:
 
             # Dictionary to store the backup and quantized parameters
             backup_params={} 
             hardtanh_params = {}
+            real_grads = {}
+
+            output = model(input_var)
+            loss = criterion(output, target_var)
+            optimizer.zero_grad()
+            loss.backward()
+            for n, p in model.named_parameters():
+                real_grads[n] = copy.deepcopy(p.grad.data)
 
             # Compute w* and assign them to the model before applying backward()
             for n, p in model.named_parameters():
                 if if_binary(n):
                     # Store the current weights 
-                    # backup_params[n] = copy.deepcopy(p.data)
+                    backup_params[n] = copy.deepcopy(p.data)
 
                     #Compute w*
                     wstar = F.hardtanh(p.data/delta, min_val=min_dt, max_val=max_dt)
                     hardtanh_params[n] = copy.deepcopy(wstar)
 
                     # Assign w* to the model parameters
-                    # p.data.copy_(wstar) 
+                    p.data.copy_(wstar) 
                 else:
-                    # Do this to also copy non-binary parameters to the evaluation network 
+                    # Do this to also copy non-binary 
+                    # parameters to the evaluation network 
                     hardtanh_params[n] = copy.deepcopy(p.data)
 
             #Compute gradient w.r.t. w*
@@ -381,34 +397,29 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             loss.backward()
 
             #Now, resto parameters
-            # with torch.no_grad():
-            #     for n,p in model.named_parameters():
-            #         if if_binary(n):
-            #             p.data.copy_(backup_params[n])
+            with torch.no_grad():
+                for n,p in model.named_parameters():
+                    if if_binary(n):
+                        p.data.copy_(backup_params[n])
 
 
             # With wstar and grad, we can now compute delta E and update paramteters 
             with torch.no_grad():
                 for n, p in bin_model.named_parameters():
-                    if if_binary(n):
-                        # p.data.copy_(hardtanh_params[n])
-                        if (epoch < 10000):
-                            p.data.copy_(hardtanh_params[n])
-                        else:
-                            # pdata = 0*torch.ones_like(hardtanh_params[n])
-                            # pdata[hardtanh_params[n] >= 1] =  1
-                            # pdata[hardtanh_params[n] <= -1] = -1
-                            # p.data.copy_(pdata)
-                            p.data.copy_(torch.sign(hardtanh_params[n]))
-                    else:
-                        p.data.copy_(hardtanh_params[n])
+                    # if (epoch > 10):
+                    #     pdata = 0*torch.ones_like(hardtanh_params[n])
+                    #     pdata[hardtanh_params[n] >= 1] =  1
+                    #     pdata[hardtanh_params[n] <= -1] = -1
+                    #     p.data.copy_(pdata)
+                    # else:
+                    p.data.copy_(hardtanh_params[n])
 
             for n, p in model.named_parameters():
                 if if_binary(n):
                     tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    # g = p.grad.data
-                    g = (hardtanh_params[n] - p.data)
+                    g2 = gamma*(hardtanh_params[n] - p.data)
+                    g = p.grad.data + g2
                     wbar = (y - tau_vec * g)
 
                     # Compute masks for x and grad
@@ -432,11 +443,12 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     pre_wbar = wbar
                     wbar = F.hardtanh(pre_wbar, min_val=min_dt, max_val=max_dt)
                     wstar = hardtanh_params[n] 
-                    gr = p.grad.data + ((delta/delta) * (wstar - wbar) / tau_vec - gamma*g)
+                    gr =  (delta/delta) * (wstar - wbar) / tau_vec + (real_grads[n] - g2)
 
                     p.grad.data.copy_(gr)
                 else:
                     p.grad.data.copy_(p.grad.data)
+
 
             optimizer.step()
             
@@ -460,11 +472,11 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
         
 def train(data_loader, model, bin_model, criterion, epoch, optimizer,
-          br=0.0, bin_op=None, projection_mode=None, delta = 1.0, eta = 1.0):
+          br=0.0, bin_op=None, projection_mode=None, delta = 1.0, eta = 1.0, scheduler=None):
     # switch to train mode
     model.train()
     return forward(data_loader, model, bin_model, criterion, epoch,
-                   training=True, optimizer=optimizer, delta = delta, eta = eta)
+                   training=True, optimizer=optimizer, delta = delta, eta = eta, scheduler = scheduler)
 
 
 def validate(data_loader, model, bin_model, criterion, epoch,

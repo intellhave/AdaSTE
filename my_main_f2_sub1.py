@@ -25,7 +25,6 @@ from writer import *
 
 # Assert errors if nan is found during computing gradients
 # torch.autograd.set_detect_anomaly(True)
-torch.backends.cudnn.benchmark
 
 model_names = sorted(name for name in models.__dict__ 
         if name.islower() and not name.startswith("__") 
@@ -78,7 +77,7 @@ parser.add_argument('--lr', '--learning_rate', default=0.001, type=float,
         metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
         help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
+parser.add_argument('--weight-decay', '--wd', default=1e-1, type=float,
         metavar='W', help='weight decay (default: 1e-4)')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
         metavar='N', help='print frequency (default: 10)')
@@ -106,7 +105,7 @@ def main():
 
     delta0 = args.init_delta
     delta=delta0
-    epsillon = 1e-7
+    epsillon = 1e-6
     eta = args.init_eta
 
     # args.lr = args.lr/delta
@@ -350,7 +349,8 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
-        gamma = 0.00001
+        gamma = 1e-9
+        delta_prime = 0.01
         
         if training:
 
@@ -408,7 +408,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
                     # g = p.grad.data
-                    g = (hardtanh_params[n] - p.data)
+                    g = (hardtanh_params[n] - F.tanh(p.data/delta_prime))
                     wbar = (y - tau_vec * g)
 
                     # Compute masks for x and grad
@@ -432,7 +432,9 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     pre_wbar = wbar
                     wbar = F.hardtanh(pre_wbar, min_val=min_dt, max_val=max_dt)
                     wstar = hardtanh_params[n] 
-                    gr = p.grad.data + ((delta/delta) * (wstar - wbar) / tau_vec - gamma*g)
+                    tanhprime = torch.ones_like(p.data) - torch.pow(F.tanh(p.data/delta_prime),2)
+                    gr = p.grad.data + (gamma)*((1/delta) * (wstar - wbar) / tau_vec - g/delta_prime*tanhprime )
+                    # gr = p.grad.data 
 
                     p.grad.data.copy_(gr)
                 else:
