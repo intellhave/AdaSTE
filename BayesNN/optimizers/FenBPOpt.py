@@ -54,60 +54,29 @@ class FenBPOpt(Optimizer):
             for child in list(module.children()):
                 self.set_train_modules(child)
 
-    def step(self, closure):
-        """Performs a single optimization step.
-        Arguments:
-            closure (callable): A closure that reevaluates the model
-                and returns the loss without doing the backward pass
-        """
-        if closure is None:
-            raise RuntimeError(
-                'For now, BayesBiNN only supports that the model/loss can be reevaluated inside the step function')
-
-        self.state['step'] += 1
-
-        defaults = self.defaults
-        # We only support a single parameter group.
+    def get_grad(self, closure, theta, delta, eta, straight_through=False):
         parameters = self.param_groups[0]['params']
-        lr = self.param_groups[0]['lr']
-        momentum_beta = defaults['beta']
-        momentum = self.state['momentum']
-
-        # mu = self.state['mu']
-        lamda = self.state['lamda']
-
-        # temperature = defaults['temperature']
-        reweight = self.state['reweight']
-
-        grad_hat = torch.zeros_like(lamda)
-
-        loss_list = []
-        pred_list = []
-
-        delta = self.state['delta']
-        eta = self.state['eta']
-        # Simply using the point estimate mu instead of sampling
-        # w_vector = torch.tanh(self.state['lamda']/1e-6)
-        w_vector = F.hardtanh(self.state['lamda']/delta, min_val=-1.0, max_val=1.0)
+        y = theta/delta
+        w_vector = F.hardtanh(y, min_val=-1.0, max_val=1.0)
         vector_to_parameters(w_vector, parameters)
 
         # Get loss and predictions
         loss, preds = closure()
 
-        pred_list.append(preds)
-
         linear_grad = torch.autograd.grad(loss, parameters)  # compute the gradidents
-        loss_list.append(loss.detach())
         grad = parameters_to_vector(linear_grad).detach()
 
-        y = self.state['lamda']/delta
-        tau_vec = (1/32) * torch.ones_like(y)
+        if straight_through:
+            return loss, preds, grad
+
+
+        tau_vec = (1/(1-eta)) * torch.ones_like(y)
         wbar = (y - tau_vec * grad)
 
         mask_pos_grad = grad >= 0
         mask_neg_grad = grad < -1e-12
-        mask_pos_x = self.state['lamda'] >= delta
-        mask_neg_x = self.state['lamda'] <= -delta
+        mask_pos_x = theta >= delta
+        mask_neg_x = theta <= -delta
 
         curr_mask = mask_neg_x & mask_neg_grad
         wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
@@ -125,8 +94,50 @@ class FenBPOpt(Optimizer):
         wstar = w_vector
 
         gr = (1/delta) * (wstar - wbar) / tau_vec
+        return loss, preds, gr
+
+    def step(self, closure):
+        """Performs a single optimization step.
+        Arguments:
+            closure (callable): A closure that reevaluates the model
+                and returns the loss without doing the backward pass
+        """
+        if closure is None:
+            raise RuntimeError(
+                'For now, BayesBiNN only supports that the model/loss can be reevaluated inside the step function')
+
+        loss_list = []
+        pred_list = []
+        self.state['step'] += 1
+
+        defaults = self.defaults
+        # We only support a single parameter group.
+        parameters = self.param_groups[0]['params']
+        lr = self.param_groups[0]['lr']
+        momentum_beta = defaults['beta']
+        momentum = self.state['momentum']
+
+        # mu = self.state['mu']
+        lamda = self.state['lamda']
+        reweight = self.state['reweight']
+
+        grad_hat = torch.zeros_like(lamda)
+
+        delta = self.state['delta']
+        eta = self.state['eta']
         
+        # Obtain gradients
+        loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, 1.0, 0.001,straight_through=True)
+        loss, pred, gr = self.get_grad(closure, lamda, self.state['eta'], delta)
+
+        loss_list.append(loss)
+        pred_list.append(pred)
+
+        gr = gr + grad_soft
+        # gr = grad_soft
+        # gr = grad
     
+
         # grad_hat = defaults['train_set_size'] * grad
         grad_hat = defaults['train_set_size'] * gr
         grad_hat = grad_hat.mul(defaults['train_set_size'])
@@ -142,6 +153,7 @@ class FenBPOpt(Optimizer):
 
         # Update lamda vector
         self.state['lamda'] = self.state['lamda'] - self.param_groups[0]['lr'] * self.state['momentum']/bias_correction1
+
 
         return loss, pred_list
 

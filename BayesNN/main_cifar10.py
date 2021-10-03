@@ -14,6 +14,8 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from models import *
 
 from optimizers import BayesBiNN as BayesBiNN
+from optimizers import FenBPOpt
+
 from utils import plot_result, train_model, SquaredHingeLoss, save_train_history
 import numpy as np
 
@@ -35,7 +37,7 @@ def main():
     parser.add_argument('--bnmomentum', type=float, default=0.2, help='BN layer momentum value')
 
     # Optimization parameters
-    parser.add_argument('--optim', type=str, default='BayesBiNN', help='Optimizer: BayesBiNN, STE, Adam')
+    parser.add_argument('--optim', type=str, default='FenBP', help='Optimizer: BayesBiNN, STE, Adam')
     parser.add_argument('--val-split', type=float, default=0.1, help='Random validation set ratio')
     parser.add_argument('--criterion', type=str, default='cross-entropy', help='loss funcion: square-hinge or cross-entropy')
     parser.add_argument('--batch-size', type=int, default=50, metavar='N',
@@ -61,7 +63,7 @@ def main():
                         help='BayesBiNN momentum (default: 0.9)')
     parser.add_argument('--data-augmentation', action='store_true', default=True, help='Enable data augmentation')
     # Logging parameters
-    parser.add_argument('--log-interval', type=int, default=10000, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
@@ -157,7 +159,7 @@ def main():
     ])
 
     # Defining the dataset
-    kwargs = {'num_workers': 2, 'pin_memory': True} if args.use_cuda else {}
+    kwargs = {'num_workers': 1, 'pin_memory': True} if args.use_cuda else {}
     train_dataset = datasets.CIFAR10('./data', train=True, download=True, transform=transform_train)
 
     if args.val_split > 0 and args.val_split < 1:
@@ -223,6 +225,11 @@ def main():
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
 
         optimizer = BayesBiNN(model,lamda_init = args.lamda,lamda_std = args.lamda_std,  temperature = args.temperature, train_set_size=effective_trainsize, lr=args.lr, betas=args.momentum, num_samples=args.train_samples)
+    elif args.optim == 'FenBP':
+        effective_trainsize = len(train_loader.sampler) * args.trainset_scale
+        optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
+                lr = 1e-4,
+                eta = 0.15)
 
     # Defining the criterion
     if args.criterion == 'square-hinge':

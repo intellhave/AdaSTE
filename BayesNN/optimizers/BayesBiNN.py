@@ -130,7 +130,7 @@ class BayesBiNN(Optimizer):
 
         loss_list = []
         pred_list = []
-        pdb.set_trace()
+        # pdb.set_trace()
 
         if defaults['num_samples'] <=0:
             # Simply using the point estimate mu instead of sampling

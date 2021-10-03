@@ -70,7 +70,7 @@ def main():
     # Computation parameters
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=1, metavar='S',
+    parser.add_argument('--seed', type=int, default=3, metavar='S',
                         help='random seed (default: 1)')
 
     parser.add_argument('--lrschedular', type=str, default='Cosine', help='Mstep,Expo,Cosine')
@@ -202,7 +202,9 @@ def main():
         optimizer = BayesBiNN(model,lamda_init = args.lamda,lamda_std = args.lamda_std,  temperature = args.temperature, train_set_size=effective_trainsize, lr=args.lr, betas=args.momentum, num_samples=args.train_samples, reweight = args.kl_reweight)
     elif args.optim == 'FenBP':
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
-        optimizer=FenBPOpt(model,train_set_size=effective_trainsize)
+        optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
+                lr=1e-4,
+                eta = 0.15)
 
     # Defining the criterion
     if args.criterion == 'square-hinge':
