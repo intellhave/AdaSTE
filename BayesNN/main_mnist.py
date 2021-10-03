@@ -62,7 +62,7 @@ def main():
                         help='BayesBiNN momentum (default: 0.0)')
     parser.add_argument('--data-augmentation', action='store_true', default=False, help='Enable data augmentation')
     # Logging parameters
-    parser.add_argument('--log-interval', type=int, default=500, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
@@ -203,6 +203,7 @@ def main():
     elif args.optim == 'FenBP':
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
         optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
+                delta=1e-5,
                 lr=1e-4,
                 eta = 0.15)
 

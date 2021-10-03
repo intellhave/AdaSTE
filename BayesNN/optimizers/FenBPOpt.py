@@ -69,31 +69,51 @@ class FenBPOpt(Optimizer):
         if straight_through:
             return loss, preds, grad
 
+        tau_vec = (1/32) * torch.ones_like(y)
+        eta_vec = eta *  torch.ones_like(y)
+        final_grad = grad * torch.ones_like(grad)
 
-        tau_vec = (1/(1-eta)) * torch.ones_like(y)
         wbar = (y - tau_vec * grad)
+        
 
-        mask_pos_grad = grad >= 0
-        mask_neg_grad = grad < -1e-12
-        mask_pos_x = theta >= delta
-        mask_neg_x = theta <= -delta
+        mask_pos_grad = grad > 0
+        mask_neg_grad = grad < 0
+        mask_pos_x = theta > delta
+        mask_neg_x = theta < -delta
 
         curr_mask = mask_neg_x & mask_neg_grad
-        wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
-        tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
-            tau_vec[curr_mask]), 
-            1/(1-eta) * ((y[curr_mask]+1)/grad[curr_mask]))
+        # wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
+        # tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
+        #     tau_vec[curr_mask]), 
+        #     1/(1-eta) * ((y[curr_mask]+1)/grad[curr_mask]))
+
+        eta_vec[curr_mask] = 1 - delta * (theta[curr_mask]+delta)/(theta[curr_mask]-delta)
+        # tau_vec[curr_mask] = 1/(1-eta_vec[curr_mask]) * ((y[curr_mask]+1)/grad[curr_mask])
+        # wbar[curr_mask] = y[curr_mask] - tau_vec[curr_mask] * grad[curr_mask]
+        final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
+        # final_grad[curr_mask] = grad[curr_mask]
 
         curr_mask = mask_pos_x & mask_pos_grad
-        wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]-1))
-        tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
-            tau_vec[curr_mask]), 
-            1/(1-eta) * ((y[curr_mask]-1)/grad[curr_mask]))
+        # wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]-1))
+        # tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
+        #     tau_vec[curr_mask]), 
+        #     1/(1-eta) * ((y[curr_mask]-1)/grad[curr_mask]))
 
-        wbar = F.hardtanh(wbar, min_val=-1.0, max_val=1.0)
-        wstar = w_vector
 
-        gr = (1/delta) * (wstar - wbar) / tau_vec
+        eta_vec[curr_mask] = 1 - delta*(theta[curr_mask]-delta)/(theta[curr_mask]+delta)
+        # tau_vec[curr_mask] = 1/(1-eta_vec[curr_mask]) * ((y[curr_mask]+1)/grad[curr_mask])
+        # wbar[curr_mask] = y[curr_mask] - tau_vec[curr_mask] * grad[curr_mask]
+        final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
+        # pdb.set_trace()
+
+
+        # wbar = (y - tau_vec * grad)
+        # wbar = F.hardtanh(wbar, min_val=-1.0, max_val=1.0)
+        # wstar = w_vector
+        # gr = (1/delta) * (wstar - wbar) / tau_vec
+
+        gr = final_grad
+        
         return loss, preds, gr
 
     def step(self, closure):
@@ -127,13 +147,13 @@ class FenBPOpt(Optimizer):
         eta = self.state['eta']
         
         # Obtain gradients
-        loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, 1.0, 0.001,straight_through=True)
-        loss, pred, gr = self.get_grad(closure, lamda, self.state['eta'], delta)
+        # loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, 1.0, 0.001,straight_through=False)
+        loss, pred, gr = self.get_grad(closure, lamda, delta=delta, eta = self.state['eta'] )
 
         loss_list.append(loss)
         pred_list.append(pred)
 
-        gr = gr + grad_soft
+        # gr = gr + grad_soft
         # gr = grad_soft
         # gr = grad
     
