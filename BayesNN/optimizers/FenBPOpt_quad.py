@@ -13,14 +13,14 @@ def update_input(self, input, output):
     self.input = input[0].data
     self.output = output 
 
-class FenBPOpt(Optimizer):
+class FenBPOptQuad(Optimizer):
 
-    def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.9999, lamda_init=10, lamda_std=0, reweight=1):
+    def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.1, lamda_init=10, lamda_std=0, reweight=1, rho = 0.9):
         if train_set_size < 1:
             raise ValueError("Invalid number of datapoints: {}".format(train_set_size))
 
         defaults=dict(lr=lr, train_set_size=train_set_size, beta=betas)
-        super(FenBPOpt, self).__init__(model.parameters(), defaults)
+        super(FenBPOptQuad, self).__init__(model.parameters(), defaults)
 
         self.train_modules = []
         self.set_train_modules(model)
@@ -45,6 +45,7 @@ class FenBPOpt(Optimizer):
         self.state['reweight'] = reweight
         self.state['delta']=delta
         self.state['eta']=eta
+        self.state['rho']=rho
 
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
@@ -55,9 +56,18 @@ class FenBPOpt(Optimizer):
                 self.set_train_modules(child)
 
     def get_grad(self, closure, theta, delta, eta, straight_through=False):
+        rho = self.state['rho']
+        rho = 0.5
+        eps = 1e-3
+        kappa = self.state['eta']
+
         parameters = self.param_groups[0]['params']
+
         y = theta/delta
-        w_vector = F.hardtanh(y, min_val=-1.0, max_val=1.0)
+        w_vector = F.hardtanh(y/(1-rho), min_val=-1.0, max_val=1.0)
+        wstar = w_vector
+
+        # Pass the binary weights to the model
         vector_to_parameters(w_vector, parameters)
 
         # Get loss and predictions
@@ -66,58 +76,53 @@ class FenBPOpt(Optimizer):
         linear_grad = torch.autograd.grad(loss, parameters)  # compute the gradidents
         grad = parameters_to_vector(linear_grad).detach()
 
-        # Use sign to evaluate
-        vector_to_parameters(torch.sign(y), parameters)
+        # Vector to store beta 
+        tau_vec = (1/32) * torch.ones_like(y)
+        mask = (grad > 1e-6) | (grad < -1e-6)
+        tau_vec[mask] = (y[mask] + 1 - rho)/((1-kappa) * grad[mask])
+        wbar = y - tau_vec * grad
+
+        # mask = (grad > 1e-6) | (grad < -1e-6)
+        mask = (grad > eps) & (theta > delta)
+        tau_vec[mask] = (y[mask] + 1 - rho)/((1-kappa) * grad[mask])
+        wbar[mask] = y[mask] - (y[mask] + 1 - rho)/(1-kappa)
+
+        mask = (grad < -eps) & (theta < -delta)
+        tau_vec[mask] = (y[mask] - 1 + rho)/((1-kappa) * grad[mask])
+        wbar[mask] = y[mask] - (y[mask] + 1 - rho)/(1-kappa)
+
+        wbar = F.hardtanh(wbar, min_val=-1.0, max_val=1.0)
+        gr = (1/delta) * (wstar - wbar) / tau_vec
 
         if straight_through:
             return loss, preds, grad
 
-        tau_vec = (1/32) * torch.ones_like(y)
-        eta_vec = eta *  torch.ones_like(y)
-        final_grad = grad
-
-        wbar = (y - tau_vec * grad)
-        
-
-        mask_pos_grad = grad > 1e-1
-        mask_neg_grad = grad < -1e-1
-        mask_pos_x = theta > delta
-        mask_neg_x = theta < -delta
-
-        curr_mask = mask_neg_x & mask_neg_grad
-        # wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
-        # tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
-        #     tau_vec[curr_mask]), 
-        #     1/(1-eta) * ((y[curr_mask]+1)/grad[curr_mask]))
-        # eta_vec[curr_mask] = 1 - delta * (theta[curr_mask]+delta)/(theta[curr_mask]-delta)
-        eta_vec[curr_mask] = -2/(y[curr_mask]-1)
-        # tau_vec[curr_mask] = 1/(1-eta_vec[curr_mask]) * ((y[curr_mask]+1)/grad[curr_mask])
-        # wbar[curr_mask] = y[curr_mask] - tau_vec[curr_mask] * grad[curr_mask]
-        final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
-        # final_grad[curr_mask] = grad[curr_mask]
-
-        curr_mask = mask_pos_x & mask_pos_grad
-        # wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]-1))
-        # tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
-        #     tau_vec[curr_mask]), 
-        #     1/(1-eta) * ((y[curr_mask]-1)/grad[curr_mask]))
-
-
-        # eta_vec[curr_mask] = 1 - delta*(theta[curr_mask]-delta)/(theta[curr_mask]+delta)
-        eta_vec[curr_mask] = -2/(y[curr_mask]+1)
-        # tau_vec[curr_mask] = 1/(1-eta_vec[curr_mask]) * ((y[curr_mask]+1)/grad[curr_mask])
-        # wbar[curr_mask] = y[curr_mask] - tau_vec[curr_mask] * grad[curr_mask]
-        final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
-
-        curr_mask = mask_neg_x & mask_pos_grad 
-        final_grad[curr_mask]= 0
-
-        curr_mask = mask_pos_x & mask_neg_grad
-        final_grad[curr_mask]= 0 
-
-        gr = final_grad
-        
         return loss, preds, gr
+
+        # mask_pos_grad = grad > 1e-6
+        # mask_neg_grad = grad < -1e-6
+        # mask_pos_x = theta/delta >= 1-rho
+        # mask_neg_x = theta/delta <= -1+rho
+
+        # curr_mask = mask_pos_x & mask_pos_grad
+        # tau_vec[curr_mask] = (y[curr_mask] - 1 + rho)/((1-kappa) * grad[curr_mask])
+        # wbar[curr_mask] = y[curr_mask] - (y[curr_mask] - 1 + rho)/(1-kappa)
+
+
+        # curr_mask = mask_neg_x & mask_neg_grad
+        # tau_vec[curr_mask] = (y[curr_mask] - 1 + rho)/((1-kappa) * grad[curr_mask])
+        # wbar[curr_mask] = y[curr_mask] - (y[curr_mask] - 1 + rho)/(1-kappa)
+
+        # # tau_vec = (y-1+rho)/((1-kappa)*grad)
+        # # eta_vec = eta *  torch.ones_like(y)
+        # # final_grad = grad * torch.ones_like(grad)
+        # # wbar = (y - tau_vec * grad)/(1-rho)
+        # wbar = F.hardtanh(wbar, min_val=-1.0, max_val=1.0)
+
+        # gr = (1/theta) * (wstar - wbar) / tau_vec
+        # return loss, preds, gr
+        
+
 
     def step(self, closure):
         """Performs a single optimization step.
@@ -150,8 +155,8 @@ class FenBPOpt(Optimizer):
         eta = self.state['eta']
         
         # Obtain gradients
-        # loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, delta=1.0, eta=0.001,straight_through=False)
-        loss, pred, gr = self.get_grad(closure, lamda, delta=delta, eta = self.state['eta'] )
+        # loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, 1.0, 0.001,straight_through=False)
+        loss, pred, gr = self.get_grad(closure, lamda, delta=delta, eta = self.state['eta'])
 
         loss_list.append(loss)
         pred_list.append(pred)

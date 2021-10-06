@@ -15,6 +15,8 @@ from models import *
 
 from optimizers import BayesBiNN as BayesBiNN
 from optimizers import FenBPOpt
+from optimizers import FenBPOptQuad
+from optimizers import FenBPOptProx
 
 from utils import plot_result, train_model, SquaredHingeLoss, save_train_history
 import numpy as np
@@ -65,13 +67,13 @@ def main():
     # Logging parameters
     parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
-    parser.add_argument('--save-model', action='store_true', default=False,
+    parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
     parser.add_argument('--experiment-id', type=int, default=0, help='Experiment ID for log files (int)')
     # Computation parameters
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=10, metavar='S',
+    parser.add_argument('--seed', type=int, default=25, metavar='S',
                         help='random seed (default: 10)')
 
     parser.add_argument('--lrschedular', type=str, default='Cosine', help='Mstep,Expo,Cosine')

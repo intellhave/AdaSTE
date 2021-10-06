@@ -12,6 +12,8 @@ import pdb
 from models import *
 from optimizers import BayesBiNN as BayesBiNN
 from optimizers import FenBPOpt
+from optimizers import FenBPOptQuad
+from optimizers import FenBPOptProx
 
 from utils import plot_result, train_model, SquaredHingeLoss, save_train_history
 
@@ -99,6 +101,8 @@ def main():
 
     if args.model == 'MLPBinaryConnect_STE':
         args.optim = 'STE' # in this case, only STE optimizer is used
+
+    
 
 
     if args.lr_decay > 1:
@@ -203,7 +207,7 @@ def main():
     elif args.optim == 'FenBP':
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
         optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
-                delta=1e-5,
+                delta=1e-6,
                 lr=1e-4,
                 eta = 0.15)
 
