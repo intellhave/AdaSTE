@@ -239,12 +239,12 @@ def main():
             # print('Delta changed to ', delta)
 
             # Training
-            train_loss, train_prec1, train_prec5 = train(train_loader, 
+            train_loss, train_prec1, train_prec5, train_prec1_fp, train_prec5_fp = train(train_loader, 
                     model, bin_model, criterion, epoch, 
                     optimizer, delta = delta, eta = eta)
 
             # evaluate on validation set 
-            val_loss, val_prec1, val_prec5 = validate(
+            val_loss, val_prec1, val_prec5, val_prec1_fp, val_prec5_fp = validate(
                     val_loader, model, bin_model, criterion, epoch, 
                     delta = delta, eta = eta)
 
@@ -266,13 +266,13 @@ def main():
             logging.info('\n Epoch: {0}\t'
                          'Training Loss {train_loss:.4f} \t'
                          'Training Prec@1 {train_prec1:.3f} \t'
-                         'Training Prec@5 {train_prec5:.3f} \t'
+                         'Training FP_Prec@1 {train_prec1_fp:.3f} \t'
                          'Validation Loss {val_loss:.4f} \t'
                          'Validation Prec@1 {val_prec1:.3f} \t'
-                         'Validation Prec@5 {val_prec5:.3f} \n'
+                         'Validation FP_Prec@1 {val_prec1_fp:.3f} \n'
                          .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
                                  train_prec1=train_prec1, val_prec1=val_prec1,
-                                 train_prec5=train_prec5, val_prec5=val_prec5))
+                                 train_prec1_fp=train_prec1_fp, val_prec1_fp=val_prec1_fp))
             
             results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
                         train_error1=100 - train_prec1, val_error1=100 - val_prec1,
@@ -309,6 +309,8 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    top1_fp = AverageMeter()
+    top5_fp = AverageMeter()
 
     end = time.time()
 
@@ -341,16 +343,18 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             bin_output = bin_output[0]
 
         # measure accuracy and record loss
-        # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         bin_prec1, bin_prec5 = accuracy(bin_output.data, target, topk=(1,5))
         top1.update(bin_prec1.item(), inputs.size(0))
         top5.update(bin_prec5.item(), inputs.size(0))
         losses.update(bin_loss.data.item(), inputs.size(0))
 
+        top1_fp.update(prec1.item(), inputs.size(0))
+        top5_fp.update(prec5.item(), inputs.size(0))
         # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
-        gamma = 0.00001
+        gamma = 1000
         
         if training:
 
@@ -405,10 +409,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
 
             for n, p in model.named_parameters():
                 if if_binary(n):
-                    tau_vec = (1/32)*torch.ones_like(p.data)
+                    tau_vec = (1/8)*torch.ones_like(p.data)
                     y = p.data/delta
                     # g = p.grad.data
-                    g = (hardtanh_params[n] - p.data)
+                    g = gamma*(hardtanh_params[n] - p.data)
                     wbar = (y - tau_vec * g)
 
                     # Compute masks for x and grad
@@ -432,7 +436,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     pre_wbar = wbar
                     wbar = F.hardtanh(pre_wbar, min_val=min_dt, max_val=max_dt)
                     wstar = hardtanh_params[n] 
-                    gr = p.grad.data + ((delta/delta) * (wstar - wbar) / tau_vec - gamma*g)
+                    gr = p.grad.data + ((delta/delta) * (wstar - wbar) / tau_vec - g)
 
                     p.grad.data.copy_(gr)
                 else:
@@ -450,13 +454,13 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                          'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                          'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                         'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                         'FP_Prec@1 {top1_fp.val:.3f} ({top1_fp.avg:.3f})'.format(
                              epoch, i, len(data_loader), delta = delta,
                              phase='TRAINING' if training else 'EVALUATING',
                              batch_time=batch_time, data_time=data_time, loss=losses,  
-                             top1=top1, top5=top5))
+                             top1=top1, top1_fp=top1_fp))
 
-    return losses.avg, top1.avg, top5.avg
+    return losses.avg, top1.avg, top5.avg, top1_fp.avg, top5_fp.avg
 
         
 def train(data_loader, model, bin_model, criterion, epoch, optimizer,

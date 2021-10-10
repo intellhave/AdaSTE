@@ -9,8 +9,12 @@ import seaborn as sns; sns.set_style("whitegrid")
 # csvpath = "results/resnet20_FenBP_1em6_normeta/results.csv"
 # csvpath = "results/resnet20_FenBP_1em6_f4/results.csv"
 # csvpath = "results/resnet/results.csv"
-csvpath = "results/simple_mlp_MNIST/results.csv"
-# csvpath = "results/resnet20_FenBP_1em4_cosine_f4/results.csv"
+# csvpath = "results/simple_mlp_MNIST/results.csv"
+# csvpath = "results/resnet20_FenBP/results.csv"
+csvpath = "results/resnet18_prox_Adam_run_0/results.csv"
+# csvpath = "results/resnet18_bc_Adam_run_0/results.csv"
+# csvpath = "results/simple_mlp_MNIST/results.csv"
+# csvpath = "results/simple_mlp_MNIST/results.csv"
 
 df = pd.read_csv(csvpath)
 

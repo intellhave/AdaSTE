@@ -1,4 +1,4 @@
-import argparse 
+import argparse
 import os
 import time 
 import logging
@@ -24,8 +24,7 @@ from writer import *
 
 
 # Assert errors if nan is found during computing gradients
-torch.autograd.set_detect_anomaly(True)
-torch.manual_seed(1)
+# torch.autograd.set_detect_anomaly(True)
 
 model_names = sorted(name for name in models.__dict__ 
         if name.islower() and not name.startswith("__") 
@@ -157,11 +156,8 @@ def main():
             checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
-        checkpoint=torch.load(checkpoint_file)
         best_prec1 = checkpoint['best_prec1']
-        print('Best Prec=========================', best_prec1)
-
-        # best_prec1 = best_prec1.cuda(args.gpus[0])
+        best_prec1 = best_prec1.cuda(args.gpus[0])
         model.load_state_dict(checkpoint['state_dict'])
         bin_model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
@@ -221,38 +217,31 @@ def main():
 
     print('learning rate: ', args.lr)
     trainable_params = filter(lambda p: p.requires_grad,  model.parameters())
-    optimizer = torch.optim.Adam(trainable_params, lr=args.lr)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)    
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500)
-
-
+    optimizer = torch.optim.SGD(trainable_params, lr=args.lr)
     logging.info('training regime : %s', regime)
 
-    # bin_op = BinOp(model, if_binary = if_binary_tern if args.projection_mode in [ 
-    #     'prox_ternary', 'ttq'] else if_binary,
-    #     ttq = (args.projection_mode=='ttq'))
+    bin_op = BinOp(model, if_binary = if_binary_tern if args.projection_mode in [ 
+        'prox_ternary', 'ttq'] else if_binary,
+        ttq = (args.projection_mode=='ttq'))
 
 
     try:
         for epoch in range(args.start_epoch, args.epochs):
-            # if not(args.no_adjust):
-            #     optimizer = adjust_optimizer(optimizer, epoch, regime)
+            if not(args.no_adjust):
+                optimizer = adjust_optimizer(optimizer, epoch, regime)
 
-
-            print('Current learning rate: ', optimizer.param_groups[0]["lr"])
             # if ((epoch+1) % args.delta_decrease_epoch == 0):
             #     delta = epsillon + delta0 - epoch*delta0/args.epochs
             #     # delta = max(1e-6, delta*1e-6)
             # print('Delta changed to ', delta)
 
             # Training
-            train_loss, train_prec1, train_prec5, train_prec1_fp, train_prec5_fp = train(train_loader, 
+            train_loss, train_prec1, train_prec5 = train(train_loader, 
                     model, bin_model, criterion, epoch, 
-                    optimizer, delta = delta, eta = eta, scheduler=None)
+                    optimizer, delta = delta, eta = eta)
 
-            # scheduler.step()
             # evaluate on validation set 
-            val_loss, val_prec1, val_prec5, val_prec1_fp, val_prec5_fp = validate(
+            val_loss, val_prec1, val_prec5 = validate(
                     val_loader, model, bin_model, criterion, epoch, 
                     delta = delta, eta = eta)
 
@@ -274,13 +263,13 @@ def main():
             logging.info('\n Epoch: {0}\t'
                          'Training Loss {train_loss:.4f} \t'
                          'Training Prec@1 {train_prec1:.3f} \t'
-                         'FP Training Prec@1 {train_prec1_fp:.3f} \t'
+                         'Training Prec@5 {train_prec5:.3f} \t'
                          'Validation Loss {val_loss:.4f} \t'
                          'Validation Prec@1 {val_prec1:.3f} \t'
-                         'FP Validation Prec@1 {val_prec1_fp:.3f} \n'
+                         'Validation Prec@5 {val_prec5:.3f} \n'
                          .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
                                  train_prec1=train_prec1, val_prec1=val_prec1,
-                                 train_prec1_fp=train_prec1_fp, val_prec1_fp=val_prec1_fp))
+                                 train_prec5=train_prec5, val_prec5=val_prec5))
             
             results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
                         train_error1=100 - train_prec1, val_error1=100 - val_prec1,
@@ -306,7 +295,7 @@ def main():
 
    
 def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, optimizer=None, 
-        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0, eta = 1.0, scheduler = None):
+        br=0.0, bin_op=None, projection_mode=None, binarize=False, delta = 1.0, eta = 1.0):
 
     if args.gpus and len(args.gpus) > 1:
         print('GPU')
@@ -317,9 +306,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-    top1_fp = AverageMeter()
-    top5_fp = AverageMeter()
-    
+
     end = time.time()
 
     for i, (inputs, target) in enumerate(data_loader):
@@ -351,34 +338,21 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
             bin_output = bin_output[0]
 
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+        # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         bin_prec1, bin_prec5 = accuracy(bin_output.data, target, topk=(1,5))
         top1.update(bin_prec1.item(), inputs.size(0))
         top5.update(bin_prec5.item(), inputs.size(0))
-        top1_fp.update(prec1.item(), inputs.size(0))
-        top5_fp.update(prec5.item(), inputs.size(0))
-
         losses.update(bin_loss.data.item(), inputs.size(0))
 
         # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
-        gamma = 100
-        mu = 0.5
         
         if training:
 
             # Dictionary to store the backup and quantized parameters
             backup_params={} 
             hardtanh_params = {}
-            real_grads = {}
-
-            output = model(input_var)
-            loss = criterion(output, target_var)
-            optimizer.zero_grad()
-            loss.backward()
-            for n, p in model.named_parameters():
-                real_grads[n] = copy.deepcopy(p.grad.data)
 
             # Compute w* and assign them to the model before applying backward()
             for n, p in model.named_parameters():
@@ -425,11 +399,10 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                 if if_binary(n):
                     tau_vec = (1/32)*torch.ones_like(p.data)
                     y = p.data/delta
-                    g2 = gamma*(hardtanh_params[n] - p.data)
-                    g = p.grad.data + g2
+                    g = p.grad.data
                     wbar = (y - tau_vec * g)
 
-                    # Compute masks for x and grad
+                    # # Compute masks for x and grad
                     mask_pos_grad = p.grad.data >= 1e-12
                     mask_neg_grad = p.grad.data < -1e-12
                     mask_pos_x = p.data >= delta
@@ -437,24 +410,25 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     
                     curr_mask = mask_neg_x & mask_neg_grad
                     wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
-                    tau_vec[curr_mask] = torch.max(1e-4 * torch.ones_like(
+                    tau_vec[curr_mask] = torch.max(1e-20 * torch.ones_like(
                         tau_vec[curr_mask]), 
                         1/(1-eta) * ((y[curr_mask]+1)/g[curr_mask]))
 
                     curr_mask = mask_pos_x & mask_pos_grad
                     wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]-1))
-                    tau_vec[curr_mask] = torch.max(1e-4 * torch.ones_like(
+                    tau_vec[curr_mask] = torch.max(1e-20 * torch.ones_like(
                         tau_vec[curr_mask]), 
                         1/(1-eta) * ((y[curr_mask]-1)/g[curr_mask]))
 
                     pre_wbar = wbar
                     wbar = F.hardtanh(pre_wbar, min_val=min_dt, max_val=max_dt)
                     wstar = hardtanh_params[n] 
-                    gr =  (1/delta) * (wstar - wbar) / tau_vec + (real_grads[n] - g2)
+                    gr = (delta/delta) * (wstar - wbar) / tau_vec + 0.00001*g
+
+                    # pdb.set_trace()
                     p.grad.data.copy_(gr)
                 # else:
                     # p.grad.data.copy_(p.grad.data)
-
 
             optimizer.step()
             
@@ -468,28 +442,28 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                          'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                          'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                          'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                         'FP Prec@1 {top1_fp.val:.3f} ({top1_fp.avg:.3f})'.format(
+                         'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                              epoch, i, len(data_loader), delta = delta,
                              phase='TRAINING' if training else 'EVALUATING',
                              batch_time=batch_time, data_time=data_time, loss=losses,  
-                             top1=top1, top1_fp=top1_fp))
+                             top1=top1, top5=top5))
 
-    return losses.avg, top1.avg, top5.avg, top1_fp.avg, top5_fp.avg
+    return losses.avg, top1.avg, top5.avg
 
         
 def train(data_loader, model, bin_model, criterion, epoch, optimizer,
-          br=0.0, bin_op=None, projection_mode=None, delta = 1.0, eta = 1.0, scheduler=None):
+          br=0.0, bin_op=None, projection_mode=None, delta = 1.0, eta = 1.0):
     # switch to train mode
     model.train()
     return forward(data_loader, model, bin_model, criterion, epoch,
-                   training=True, optimizer=optimizer, delta = delta, eta = eta, scheduler = scheduler)
+                   training=True, optimizer=optimizer, delta = delta, eta = eta)
 
 
 def validate(data_loader, model, bin_model, criterion, epoch,
              br=0.0, bin_op=None, projection_mode=None,
              binarize=False, delta = 1.0, eta = 1.0):
     # switch to evaluate mode
-    # model.eval()
+    model.eval()
     return forward(data_loader, model, bin_model, criterion, epoch,
                    training=False, optimizer=None, delta = delta, eta = eta)
 

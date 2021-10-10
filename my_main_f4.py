@@ -156,8 +156,10 @@ def main():
             checkpoint_file = os.path.join(checkpoint_file, 'model_best.pth.tar')
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
+        checkpoint = torch.load(checkpoint_file)
         best_prec1 = checkpoint['best_prec1']
-        best_prec1 = best_prec1.cuda(args.gpus[0])
+        print('==================Best Prec1 = ', best_prec1)
+        # best_prec1 = best_prec1.cuda(args.gpus[0])
         model.load_state_dict(checkpoint['state_dict'])
         bin_model.load_state_dict(checkpoint['state_dict'])
         logging.info("loaded checkpoint '%s' (epoch %s)",
@@ -355,7 +357,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
         # eta = 0.25
         min_dt = -1.0
         max_dt = 1.0
-        gamma = 1e-3
+        gamma = 1e-9
         mu = 0.5
         
         if training:

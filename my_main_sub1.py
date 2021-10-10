@@ -455,7 +455,7 @@ def forward(data_loader, model, bin_model, criterion,  epoch=0, training=True, o
                     pre_wbar = wbar
                     wbar = F.hardtanh(pre_wbar, min_val=min_dt, max_val=max_dt)
                     wstar = hardtanh_params[n] 
-                    gr =  (1.0/delta) * (wstar - wbar) / tau_vec + real_grads[n]
+                    gr =  0.001*(delta/delta) * (wstar - wbar) / tau_vec + real_grads[n]
                     # gr =  real_grads[n]
 
                     p.grad.data.copy_(gr)
