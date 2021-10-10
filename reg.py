@@ -239,7 +239,7 @@ class AltQuantize(Function):
 class BinOp():
     '''Class for quantization operations on nn.Module'''
     def __init__(self, model, if_binary=if_binary,
-                 ttq=False):
+                 ttq=False, delta=1e-6):
         self.model = model
         # Make copy of all parameters and store in saved_params
         self.saved_params = {}
@@ -250,6 +250,7 @@ class BinOp():
                 self.saved_params[n] = p.data.clone()
                 self.init_params[n] = p.data.clone()
         self.ttq = ttq
+        self.delta = delta
         if ttq:
             self.ternary_assigns = {n: ([], [])
                                     for n, p in model.named_parameters()
@@ -282,6 +283,12 @@ class BinOp():
                     p_sign, p_abs = p.data.sign(), p.data.abs()
                     p.data.copy_(p_sign * (F.relu((p_abs - 1).abs() - reg) \
                                            * (p_abs - 1).sign() + 1))
+        if reg_type == 'tanh':
+            for n, p in self.model.named_parameters():
+                if self.if_binary(n):
+                    p_sign = F.hardtanh(p.data/self.delta, min_val=-1.0, max_val=1.0)
+                    p.data.copy_(p_sign)
+
         if reg_type == 'ternary':
             for n, p in self.model.named_parameters():
                 if self.if_binary(n):
@@ -402,6 +409,27 @@ class BinOp():
                     inds_p, inds_n = self.ternary_assigns[n]
                     p.grad[inds_p].mul_(self.ternary_vals[n + "_pos"].abs())
                     p.grad[inds_n].mul_(self.ternary_vals[n + "_neg"].abs())
+
+    def modify_grad_fenbp(self):
+        delta = self.delta
+        for n, p in self.model.named_parameters():
+            if self.if_binary(n):
+                y = p.data/delta
+                mask_pos_grad = p.grad.data > 1e-3
+                mask_neg_grad = p.grad.data < -1e-3
+                mask_pos_x = p.data > delta
+                mask_neg_x = p.data < -delta
+
+                curr_mask = mask_neg_x & mask_neg_grad
+                p.grad.data[curr_mask] *= -2/(y[curr_mask]-1)
+
+                curr_mask = mask_pos_x & mask_pos_grad
+                p.grad.data[curr_mask] *= -2/(y[curr_mask]+1)
+
+                curr_mask = (mask_neg_x & mask_pos_grad) | (mask_pos_x & mask_neg_grad)
+                p.grad.data[curr_mask] = 0
+
+            
         
 def binary_levels(net, if_binary=if_binary):
     '''Compute level of binarization'''

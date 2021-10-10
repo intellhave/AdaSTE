@@ -11,8 +11,8 @@ import seaborn as sns; sns.set_style("whitegrid")
 # csvpath = "results/resnet/results.csv"
 # csvpath = "results/simple_mlp_MNIST/results.csv"
 # csvpath = "results/resnet20_FenBP/results.csv"
-csvpath = "results/resnet18_prox_Adam_run_0/results.csv"
-# csvpath = "results/resnet18_bc_Adam_run_0/results.csv"
+# csvpath = "results/resnet18_prox_Adam_run_0/results.csv"
+csvpath = "results/resnet20_bc_Adam_run_0/results.csv"
 # csvpath = "results/simple_mlp_MNIST/results.csv"
 # csvpath = "results/simple_mlp_MNIST/results.csv"
 

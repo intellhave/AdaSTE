@@ -184,8 +184,8 @@ def main():
     if args.binary_regime:
         regime = {
             0: {'optimizer': 'Adam', 'lr': 1e-2},
-            81: {'lr': 1e-3},
-            122: {'lr': 1e-4},
+            100: {'lr': 5e-3},
+            122: {'lr': 5e-4},
         }
     elif args.ttq_regime:
         regime = {
@@ -373,29 +373,18 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
         # Binarize if projection mode is {lazy, stochastic bin} and in training
         if training:
-            if projection_mode == 'lazy':
-                bin_op.save_params()
-                bin_op.prox_operator(br, 'binary')
-            elif projection_mode == 'ttq':
-                bin_op.save_params()
-                bin_op.quantize('ttq')
-            elif projection_mode == 'stoch_bin':
-                bin_op.save_params()
-                bin_op.binarize(mode='stochastic')
-                # pdb.set_trace()
+            bin_op.save_params()
+            bin_op.prox_operator(br, 'binary')
             
         output = model(input_var)
         loss = criterion(output, target_var)
-        # loss_reg = loss + br * binary_reg(model)
 
         if type(output) is list:
             output = output[0]
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        # losses.update(loss.data[0], inputs.size(0))
         losses.update(loss.data.item(), inputs.size(0))
-        # top1.update(prec1[0], inputs.size(0))
         top1.update(prec1.item(), inputs.size(0))
         top5.update(prec5.item(), inputs.size(0))
 
@@ -404,28 +393,29 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             optimizer.zero_grad()
             loss.backward()
 
+            bin_op.restore()
+            bin_op.modify_grad_fenbp()
+            optimizer.step()
+            bin_op.clip()
+
             # copy parameters according to quantization modes
-            if projection_mode in ['lazy', 'stoch_bin']:
-                bin_op.restore()
-                bin_op.modify_grad_fenbp()
-                optimizer.step()
-                bin_op.clip()
-            elif projection_mode == 'ttq':
-                bin_op.restore()
-                optimizer.step()
-                step_ternary_vals(bin_op, optimizer)
-            elif projection_mode in ['prox', 'prox_median', 'prox_ternary']:
-                optimizer.step()
-                curr_lr = optimizer.param_groups[0]['lr']
-                if projection_mode == 'prox':
-                    bin_op.prox_operator(curr_lr * br, 'binary')
-                elif projection_mode == 'prox_median':
-                    bin_op.prox_operator(curr_lr * br, 'median')
-                elif projection_mode == 'prox_ternary':
-                    bin_op.prox_operator(curr_lr * br, 'ternary')
-                bin_op.clip()
-            else:
-                optimizer.step()
+            # if projection_mode in ['lazy', 'stoch_bin']:
+            # elif projection_mode == 'ttq':
+            #     bin_op.restore()
+            #     optimizer.step()
+            #     step_ternary_vals(bin_op, optimizer)
+            # elif projection_mode in ['prox', 'prox_median', 'prox_ternary']:
+            #     optimizer.step()
+            #     curr_lr = optimizer.param_groups[0]['lr']
+            #     if projection_mode == 'prox':
+            #         bin_op.prox_operator(curr_lr * br, 'binary')
+            #     elif projection_mode == 'prox_median':
+            #         bin_op.prox_operator(curr_lr * br, 'median')
+            #     elif projection_mode == 'prox_ternary':
+            #         bin_op.prox_operator(curr_lr * br, 'ternary')
+            #     bin_op.clip()
+            # else:
+            #     optimizer.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
