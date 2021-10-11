@@ -184,8 +184,9 @@ def main():
     if args.binary_regime:
         regime = {
             0: {'optimizer': 'Adam', 'lr': 1e-2},
-            100: {'lr': 5e-3},
-            122: {'lr': 5e-4},
+            20: {'lr': 5e-3},
+            100: {'lr': 1e-3},
+            122: {'lr': 1e-4},
         }
     elif args.ttq_regime:
         regime = {
@@ -247,9 +248,9 @@ def main():
             # Adjust binary regression mode if non-lazy projection
             br = args.reg_rate * epoch
             # Adjust binary reg according to learning rate
-            if args.adjust_reg:
-                curr_lr = optimizer.param_groups[0]['lr']
-                br *= args.lr / curr_lr
+            # if args.adjust_reg:
+            #     curr_lr = optimizer.param_groups[0]['lr']
+            #     br *= args.lr / curr_lr
 
             print('Current br : ', br)
                 
