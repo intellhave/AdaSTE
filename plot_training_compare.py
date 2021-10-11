@@ -30,7 +30,7 @@ best_val_acc_st = max(100-df_st.val_error1)
 print('ST Best train accuracy: ', best_train_acc_st)
 print('ST Best val accuracy: ', best_val_acc_st)
 
-plot_size = 300
+plot_size=100
 
 plt.figure(figsize=(8,5))
 plt.plot(df_fenbp.epoch[0:plot_size], df_fenbp.train_loss[0:plot_size], label="FENBP_train", lw=3)
