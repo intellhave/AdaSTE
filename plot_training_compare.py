@@ -4,12 +4,14 @@ import seaborn as sns; sns.set_style("whitegrid")
 
 
 network = 'resnet20'
-methods = ['FenBP_Prox', 'PQ', 'ST']
+# methods = ['FenBP_Prox', 'PQ', 'ST']
+methods = ['FenBP', 'PQ', 'ST']
 data_frames = []
-plot_size=200
+plot_size=300
 
 for method in methods:
-    result_path = 'results/{}_{}/results.csv'.format(network, method)
+    # result_path = 'results/{}_{}/results.csv'.format(network, method)
+    result_path = 'results/{}_cifar100_{}/results.csv'.format(network, method)
     df = pd.read_csv(result_path)
     data_frames.append(df)
     best_train_acc = max(100 - df.train_error1[0:plot_size])

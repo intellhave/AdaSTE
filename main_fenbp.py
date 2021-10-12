@@ -61,7 +61,7 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--binary_reg', default=0.0, type=float,
                     help='Binary regularization strength')
-parser.add_argument('--reg_rate', default=1e-4, type=float,
+parser.add_argument('--reg_rate', default=1e-5, type=float,
                     help='Regularization rate')
 parser.add_argument('--adjust_reg', action='store_true', default=True,
                     help='Adjust regularization based on learning rate decay')
@@ -184,9 +184,9 @@ def main():
     if args.binary_regime:
         regime = {
             0: {'optimizer': 'Adam', 'lr': 1e-2},
-            20: {'lr': 5e-3},
-            100: {'lr': 1e-3},
-            122: {'lr': 1e-4},
+            50: {'lr': 1e-2},
+            100: {'lr': 5e-3},
+            150: {'lr': 1e-3},
         }
     elif args.ttq_regime:
         regime = {
@@ -406,7 +406,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             bin_op.restore()
             bin_op.modify_grad_fenbp()
             optimizer.step()
-            bin_op.clip()
+            # bin_op.clip()
 
             # copy parameters according to quantization modes
             # if projection_mode in ['lazy', 'stoch_bin']:
