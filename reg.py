@@ -285,7 +285,6 @@ class BinOp():
                     p.data.copy_(p_sign * (F.relu((p_abs - 1).abs() - reg) \
                                            * (p_abs - 1).sign() + 1))
 
-                    p_sign = F.hardtanh(p.data/self.delta, min_val=-1.0, max_val=1.0)
 
         if reg_type == 'tanh':
             for n, p in self.model.named_parameters():

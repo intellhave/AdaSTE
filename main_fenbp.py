@@ -63,7 +63,7 @@ parser.add_argument('-b', '--batch-size', default=128, type=int,
 # Regularization paramters
 parser.add_argument('--binary_reg', default=0.0, type=float,
                     help='Binary regularization strength')
-parser.add_argument('--reg_rate', default=1e-3, type=float,
+parser.add_argument('--reg_rate', default=1e-4, type=float,
                     help='Regularization rate')
 parser.add_argument('--adjust_reg', action='store_true', default=True,
                     help='Adjust regularization based on learning rate decay')
@@ -235,8 +235,8 @@ def main():
             br = args.reg_rate * epoch
             # Adjust binary reg according to learning rate
             # if args.adjust_reg:
-            #     curr_lr = optimizer.param_groups[0]['lr']
-            #     br *= args.lr / curr_lr
+            # curr_lr = optimizer.param_groups[0]['lr']
+            # br *= args.lr / curr_lr
             print('Current br : ', br)
                 
             train_loss, train_prec1, train_prec5 = train(
