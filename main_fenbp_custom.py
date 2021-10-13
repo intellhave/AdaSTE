@@ -61,7 +61,7 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
 parser.add_argument('--binary_reg', default=0.0, type=float,
                     help='Binary regularization strength')
-parser.add_argument('--reg_rate', default=1e-4, type=float,
+parser.add_argument('--reg_rate', default=1e-5, type=float,
                     help='Regularization rate')
 parser.add_argument('--adjust_reg', action='store_true', default=True,
                     help='Adjust regularization based on learning rate decay')
@@ -164,10 +164,7 @@ def main():
     logging.info("number of parameters: %d", num_parameters)
 
     # Adjust batchnorm layers if in stochastic binarization mode
-    if args.projection_mode == 'stoch_bin':
-        adjust_bn(model)
 
-    # Data loading code
     default_transform = {
         'train': get_transform(args.dataset,
                                input_size=args.input_size, augment=True),
@@ -181,34 +178,16 @@ def main():
                                            'weight_decay': args.weight_decay}})
 
     # Adjust stepsize regime for specific optimizers
-    if args.binary_regime:
-        regime = {
-                0: {'optimizer': 'Adam', 'lr': 1e-2, 'weight_decay':1e-9},
-                50: {'lr': 5e-3},
-                100: {'lr': 1e-3},
-                150: {'lr': 1e-4},
-        }
-    elif args.ttq_regime:
-        regime = {
-            0: {'optimizer': 'SGD', 'lr': 0.1,
-                'momentum': 0.9, 'weight_decay': 2e-4},
-            80: {'lr': 1e-2},
-            120: {'lr': 1e-3},
-            300: {'lr': 1e-4}
-        }
-    elif args.optimizer == 'Adam':
-        regime = {
-            0 : {'optimizer': 'Adam', 'lr': args.lr},
-        }
-    elif args.projection_mode != None:
-        # Remove weight decay when using SGD, and reset momentum
-        regime[0]['weight_decay'] = 0.0
-        regime[0]['momentum'] = args.momentum
+    regime = {
+        0: {'optimizer': 'Adam', 'lr': 1e-2},
+        50: {'lr': 1e-2},
+        100: {'lr': 5e-3},
+        150: {'lr': 1e-3},
+    }
 
     # define loss function (criterion) and optimizer
     criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
     # criterion = nn.MSELoss()
-    # pdb.set_trace()
     criterion.type(args.type)
     model.type(args.type)
 
@@ -273,9 +252,6 @@ def main():
             # Look at prec@1 for either binarized model or original model
             is_best = val_prec1_bin > best_prec1
             best_prec1 = max(val_prec1_bin, best_prec1)
-            # else:
-            #     is_best = val_prec1 > best_prec1
-            #     best_prec1 = max(val_prec1, best_prec1)
 
             save_checkpoint({
                 'epoch': epoch + 1,
@@ -285,20 +261,18 @@ def main():
                 'best_prec1': best_prec1,
                 'regime': regime
             }, is_best, path=save_path, save_all=args.save_all)
-            
             logging.info('\n Epoch: {0}\t'
                          'Training Loss {train_loss:.4f} \t'
                          'Training Prec@1 {train_prec1:.3f} \t'
+                         'Training Prec@5 {train_prec5:.3f} \t'
                          'Validation Loss {val_loss:.4f} \t'
                          'Validation Prec@1 {val_prec1:.3f} \t'
-                         'Binary Prec@1 {val_prec1_bin:.3f} \t'
-                         'Best Prec@1 {best_prec1:.3f} \b'
+                         'Validation Prec@5 {val_prec5:.3f} \n'
                          .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
                                  train_prec1=train_prec1, val_prec1=val_prec1,
-                                 train_prec5=train_prec5, val_prec1_bin=val_prec1_bin,
-                                 best_prec1=best_prec1))
-
-            results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss_bin,
+                                 train_prec5=train_prec5, val_prec5=val_prec5))
+            
+            results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
                         train_error1=100 - train_prec1, val_error1=100 - val_prec1,
                         train_error5=100 - train_prec5, val_error5=100 - val_prec5,
                         val_error1_bin = 100 - val_prec1_bin, val_error5_bin = 100-val_prec5_bin)
@@ -376,7 +350,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         data_time.update(time.time() - end)
         if args.gpus is not None:
             target = target.cuda()
-            # target = target.cuda(async=True)
+
         input_var = Variable(inputs.type(args.type), volatile=not training)
         target_var = Variable(target)
 
@@ -410,6 +384,25 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             bin_op.modify_grad_fenbp()
             optimizer.step()
             # bin_op.clip()
+
+            # copy parameters according to quantization modes
+            # if projection_mode in ['lazy', 'stoch_bin']:
+            # elif projection_mode == 'ttq':
+            #     bin_op.restore()
+            #     optimizer.step()
+            #     step_ternary_vals(bin_op, optimizer)
+            # elif projection_mode in ['prox', 'prox_median', 'prox_ternary']:
+            #     optimizer.step()
+            #     curr_lr = optimizer.param_groups[0]['lr']
+            #     if projection_mode == 'prox':
+            #         bin_op.prox_operator(curr_lr * br, 'binary')
+            #     elif projection_mode == 'prox_median':
+            #         bin_op.prox_operator(curr_lr * br, 'median')
+            #     elif projection_mode == 'prox_ternary':
+            #         bin_op.prox_operator(curr_lr * br, 'ternary')
+            #     bin_op.clip()
+            # else:
+            #     optimizer.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)

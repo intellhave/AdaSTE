@@ -289,20 +289,23 @@ def main():
                 'best_prec1': best_prec1,
                 'regime': regime
             }, is_best, path=save_path, save_all=args.save_all)
+
             logging.info('\n Epoch: {0}\t'
                          'Training Loss {train_loss:.4f} \t'
                          'Training Prec@1 {train_prec1:.3f} \t'
-                         'Training Prec@5 {train_prec5:.3f} \t'
                          'Validation Loss {val_loss:.4f} \t'
                          'Validation Prec@1 {val_prec1:.3f} \t'
-                         'Validation Prec@5 {val_prec5:.3f} \n'
+                         'Binary Prec@1 {val_prec1_bin:.3f} \t'
+                         'Best Prec@1 {best_prec1:.3f} \b'
                          .format(epoch + 1, train_loss=train_loss, val_loss=val_loss,
                                  train_prec1=train_prec1, val_prec1=val_prec1,
-                                 train_prec5=train_prec5, val_prec5=val_prec5))
+                                 train_prec5=train_prec5, val_prec1_bin=val_prec1_bin,
+                                 best_prec1=best_prec1))
             
-            results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss,
+            results.add(epoch=epoch + 1, train_loss=train_loss, val_loss=val_loss_bin,
                         train_error1=100 - train_prec1, val_error1=100 - val_prec1,
-                        train_error5=100 - train_prec5, val_error5=100 - val_prec5)
+                        train_error5=100 - train_prec5, val_error5=100 - val_prec5,
+                        val_error1_bin = 100 - val_prec1_bin, val_error5_bin = 100-val_prec5_bin)
             #results.plot(x='epoch', y=['train_loss', 'val_loss'],
             #             title='Loss', ylabel='loss')
             #results.plot(x='epoch', y=['train_error1', 'val_error1'],
