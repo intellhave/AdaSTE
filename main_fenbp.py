@@ -1,4 +1,4 @@
-## Binary neural nets via prox operations
+## Fenchel BP 
 import argparse
 import os
 import time
@@ -53,15 +53,17 @@ parser.add_argument('--gpus', default='0',
                     help='gpus used for training - e.g 0,1,3')
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 8)')
-parser.add_argument('--epochs', default=2500, type=int, metavar='N',
+parser.add_argument('--epochs', default=300, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=128, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
+
+# Regularization paramters
 parser.add_argument('--binary_reg', default=0.0, type=float,
                     help='Binary regularization strength')
-parser.add_argument('--reg_rate', default=1e-4, type=float,
+parser.add_argument('--reg_rate', default=1e-3, type=float,
                     help='Regularization rate')
 parser.add_argument('--adjust_reg', action='store_true', default=True,
                     help='Adjust regularization based on learning rate decay')
@@ -85,8 +87,6 @@ parser.add_argument('--binarize', action='store_true',
                     help='Load an existing model and binarize')
 parser.add_argument('--binary_regime', action='store_true',
                     help='Use alternative stepsize regime (for binary training)')
-parser.add_argument('--ttq_regime', action='store_true',
-                    help='Use alternative stepsize regime (for ttq)')
 parser.add_argument('--no_adjust', action='store_true',
                     help='Will not adjust learning rate')
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
@@ -100,8 +100,10 @@ def main():
 
     if args.evaluate:
         args.results_dir = '/tmp'
+
     if args.save is '':
         args.save = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
     save_path = os.path.join(args.results_dir, args.save)
     if not os.path.exists(save_path):
         os.makedirs(save_path)
@@ -122,7 +124,6 @@ def main():
     else:
         args.gpus = None
 
-    # create model
     logging.info("creating model %s", args.model)
     model = models.__dict__[args.model]
     model_config = {'input_size': args.input_size, 'dataset': args.dataset}
@@ -131,7 +132,6 @@ def main():
         model_config = dict(model_config, **literal_eval(args.model_config))
 
     model = model(**model_config)
-    # model.cuda(device=args.gpus[0])
     logging.info("created model with configuration: %s", model_config)
 
     # optionally resume from a checkpoint
@@ -145,13 +145,13 @@ def main():
     elif args.resume:
         checkpoint_file = args.resume
         if os.path.isdir(checkpoint_file):
-            # results.load(os.path.join(checkpoint_file, 'results.csv'))
+            results.load(os.path.join(checkpoint_file, 'results.csv'))
             checkpoint_file = os.path.join(
                 checkpoint_file, 'model_best.pth.tar')
         if os.path.isfile(checkpoint_file):
             logging.info("loading checkpoint '%s'", args.resume)
             checkpoint = torch.load(checkpoint_file)
-            # args.start_epoch = checkpoint['epoch'] - 1
+            args.start_epoch = checkpoint['epoch'] - 1
             best_prec1 = checkpoint['best_prec1']
             best_prec1 = best_prec1.cuda(args.gpus[0])
             model.load_state_dict(checkpoint['state_dict'])
@@ -162,10 +162,6 @@ def main():
 
     num_parameters = sum([l.nelement() for l in model.parameters()])
     logging.info("number of parameters: %d", num_parameters)
-
-    # Adjust batchnorm layers if in stochastic binarization mode
-    if args.projection_mode == 'stoch_bin':
-        adjust_bn(model)
 
     # Data loading code
     default_transform = {
@@ -183,18 +179,10 @@ def main():
     # Adjust stepsize regime for specific optimizers
     if args.binary_regime:
         regime = {
-                0: {'optimizer': 'Adam', 'lr': 1e-2, 'weight_decay':1e-9},
+                0: {'optimizer': 'Adam', 'lr': 1e-2 },
                 50: {'lr': 5e-3},
                 100: {'lr': 1e-3},
                 150: {'lr': 1e-4},
-        }
-    elif args.ttq_regime:
-        regime = {
-            0: {'optimizer': 'SGD', 'lr': 0.1,
-                'momentum': 0.9, 'weight_decay': 2e-4},
-            80: {'lr': 1e-2},
-            120: {'lr': 1e-3},
-            300: {'lr': 1e-4}
         }
     elif args.optimizer == 'Adam':
         regime = {
@@ -207,8 +195,8 @@ def main():
 
     # define loss function (criterion) and optimizer
     criterion = getattr(model, 'criterion', nn.CrossEntropyLoss)()
-    # criterion = nn.MSELoss()
-    # pdb.set_trace()
+
+    # Move model to GPU
     criterion.type(args.type)
     model.type(args.type)
 
@@ -232,26 +220,23 @@ def main():
     optimizer = torch.optim.SGD(trainable_params, lr=args.lr)
     logging.info('training regime: %s', regime)
 
+    # Tool for performing variable projection and related tasks during 
+    # training binary network
     bin_op = BinOp(model, if_binary=if_binary, ttq=False)
 
-    # Optionally freeze before training
-    if args.freeze_epoch == 1:
-        bin_op.quantize(mode='binary_freeze')
-        args.projection_mode = None
     # Loop over epochs
     try:
         for epoch in range(args.start_epoch, args.epochs):
+
             if not(args.no_adjust):
                 optimizer = adjust_optimizer(optimizer, epoch, regime)
 
-            # train for one epoch
             # Adjust binary regression mode if non-lazy projection
             br = args.reg_rate * epoch
             # Adjust binary reg according to learning rate
             # if args.adjust_reg:
             #     curr_lr = optimizer.param_groups[0]['lr']
             #     br *= args.lr / curr_lr
-
             print('Current br : ', br)
                 
             train_loss, train_prec1, train_prec5 = train(
@@ -302,6 +287,7 @@ def main():
                         train_error1=100 - train_prec1, val_error1=100 - val_prec1,
                         train_error5=100 - train_prec5, val_error5=100 - val_prec5,
                         val_error1_bin = 100 - val_prec1_bin, val_error5_bin = 100-val_prec5_bin)
+
             #results.plot(x='epoch', y=['train_loss', 'val_loss'],
             #             title='Loss', ylabel='loss')
             #results.plot(x='epoch', y=['train_error1', 'val_error1'],
@@ -344,6 +330,7 @@ def main():
 
 def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=None,
             br=0.0, bin_op=None, projection_mode=None, binarize=False):
+
     if args.gpus and len(args.gpus) > 1:
         model = torch.nn.DataParallel(model, args.gpus)
 
@@ -359,15 +346,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     if not(training):
         bin_op.save_params()
         if binarize:
-            # bin_op.binarize()
-            if projection_mode == 'prox_median':
-                bin_op.quantize('median')
-            elif projection_mode == 'prox_ternary':
-                bin_op.quantize('ternary')
-            elif projection_mode in ['prox', 'lazy']:
-                bin_op.quantize('deterministic')
-            elif projection_mode == 'ttq':
-                bin_op.quantize('ttq')
+            bin_op.quantize('deterministic')
         elif projection_mode == 'lazy':
             bin_op.prox_operator(br, 'binary')
     
@@ -376,7 +355,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         data_time.update(time.time() - end)
         if args.gpus is not None:
             target = target.cuda()
-            # target = target.cuda(async=True)
+
         input_var = Variable(inputs.type(args.type), volatile=not training)
         target_var = Variable(target)
 
@@ -407,9 +386,9 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             loss.backward()
 
             bin_op.restore()
+            # Perform FenBP update 
             bin_op.modify_grad_fenbp()
             optimizer.step()
-            # bin_op.clip()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -434,7 +413,6 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
 def train(data_loader, model, criterion, epoch, optimizer,
           br=0.0, bin_op=None, projection_mode=None):
-    # switch to train mode
     model.train()
     return forward(data_loader, model, criterion, epoch,
                    training=True, optimizer=optimizer,
@@ -444,7 +422,6 @@ def train(data_loader, model, criterion, epoch, optimizer,
 def validate(data_loader, model, criterion, epoch,
              br=0.0, bin_op=None, projection_mode=None,
              binarize=False):
-    # switch to evaluate mode
     model.eval()
     return forward(data_loader, model, criterion, epoch,
                    training=False, optimizer=None,
