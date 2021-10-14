@@ -92,6 +92,8 @@ parser.add_argument('--no_adjust', action='store_true',
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
                     help='evaluate model FILE on validation set')
 
+parser.add_argument('--ttq_regime', action='store_true',
+                    help='Use alternative stepsize regime (for ttq)')
 
 def main():
     global args, best_prec1
@@ -179,10 +181,18 @@ def main():
     # Adjust stepsize regime for specific optimizers
     if args.binary_regime:
         regime = {
-                0: {'optimizer': 'Adam', 'lr': 1e-2 },
+                0: {'optimizer': 'Adam', 'lr': 1e-2, 'weight_decay':1e-9},
                 50: {'lr': 5e-3},
                 100: {'lr': 1e-3},
                 150: {'lr': 1e-4},
+        }
+    elif args.ttq_regime:
+        regime = {
+            0: {'optimizer': 'SGD', 'lr': 0.1,
+                'momentum': 0.9, 'weight_decay': 2e-4},
+            80: {'lr': 1e-2},
+            120: {'lr': 1e-3},
+            300: {'lr': 1e-4}
         }
     elif args.optimizer == 'Adam':
         regime = {
@@ -342,7 +352,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
 
     end = time.time()
 
-    # Binarize or prox-opearate the model if in eval mode
+
+    # # Binarize or prox-opearate the model if in eval mode
     if not(training):
         bin_op.save_params()
         if binarize:
