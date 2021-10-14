@@ -243,12 +243,15 @@ class BinOp():
         self.model = model
         # Make copy of all parameters and store in saved_params
         self.saved_params = {}
+        self.mu_params = {}
         self.init_params = {}
         self.if_binary = if_binary
         for n, p in model.named_parameters():
             if self.if_binary(n):
                 self.saved_params[n] = p.data.clone()
                 self.init_params[n] = p.data.clone()
+                self.mu_params[n] = torch.tanh(p.data)
+
         self.ttq = ttq
         self.delta = delta
         if ttq:
@@ -419,13 +422,11 @@ class BinOp():
                     p.grad[inds_n].mul_(self.ternary_vals[n + "_neg"].abs())
 
     def modify_grad_fenbp(self, reg = 1.0):
-        delta = self.delta
         for n, p in self.model.named_parameters():
             if self.if_binary(n):
-                # y = p.data/delta
                 y = p.data * reg
-                mask_pos_grad = p.grad.data > 1e-6
-                mask_neg_grad = p.grad.data < -1e-6
+                mask_pos_grad = p.grad.data > 1e-2
+                mask_neg_grad = p.grad.data < -1e-2
                 mask_pos_x = p.data > 1.0/reg
                 mask_neg_x = p.data < -1.0/reg
 
@@ -437,6 +438,17 @@ class BinOp():
 
                 curr_mask = (mask_neg_x & mask_pos_grad) | (mask_pos_x & mask_neg_grad)
                 p.grad.data[curr_mask] = 0
+
+    def modify_grad_binn(self):
+        for n, p in self.model.named_parameters():
+            if self.if_binary(n):
+                # Generate noise vector
+                raw_noise = torch.rand_like(p.data)
+                rou_vector = torch.log(raw_noise/(1-raw_noise))/2 + self.saved_params[n]
+                w_vector = p.data
+                scale = (1 - w_vector*w_vector+1e-10)/self.delta/(1-self.mu_params[n]*self.mu_params[n]+1e-10)
+                p.grad.data.copy_(scale*p.grad.data)
+
 
             
         

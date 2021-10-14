@@ -181,8 +181,8 @@ def main():
     # Adjust stepsize regime for specific optimizers
     if args.binary_regime:
         regime = {
-                0: {'optimizer': 'Adam', 'lr': 1e-2},
-                50: {'lr': 1e-2},
+                0: {'optimizer': 'Adam', 'lr': 1e-2, 'weight_decay':1e-4},
+                50: {'lr': 1e-3},
                 100: {'lr': 1e-3},
                 250: {'lr': 1e-4},
         }
@@ -361,7 +361,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             bin_op.quantize('deterministic_fenbp')
         elif projection_mode == 'lazy':
             # bin_op.prox_operator(br, 'binary')
-            bin_op.prox_operator(br, 'tanh')
+            bin_op.prox_operator(1e10, 'tanh')
     else:
         bin_op.restore()
     
@@ -381,8 +381,7 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         # Binarize if projection mode is {lazy, stochastic bin} and in training
         if training:
             bin_op.save_params()
-            # bin_op.prox_operator(br, 'binary')
-            bin_op.prox_operator(br, 'tanh')
+            bin_op.prox_operator(1e10, 'tanh')
             
         output = model(input_var)
         loss = criterion(output, target_var)
@@ -402,7 +401,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             loss.backward()
             bin_op.restore()
             # Perform FenBP update 
-            bin_op.modify_grad_fenbp(reg=br)
+            # bin_op.modify_grad_fenbp()
+            bin_op.modify_grad_binn()
             optimizer.step()
             # bin_op.clip()
 
