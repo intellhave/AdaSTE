@@ -289,7 +289,7 @@ class BinOp():
         if reg_type == 'tanh':
             for n, p in self.model.named_parameters():
                 if self.if_binary(n):
-                    p_sign = F.hardtanh(p.data/self.delta, min_val=-1.0, max_val=1.0)
+                    p_sign = F.hardtanh(p.data*reg, min_val=-1.0, max_val=1.0)
                     p.data.copy_(p_sign)
 
         if reg_type == 'ternary':
@@ -328,6 +328,11 @@ class BinOp():
             for n, p in self.model.named_parameters():
                 if self.if_binary(n):
                     p.data.copy_(p.data.sign())
+        if mode == 'deterministic_fenbp':
+            for n, p in self.model.named_parameters():
+                if self.if_binary(n):
+                    p.data.copy_(self.saved_params[n].sign())
+
         elif mode == 'binary_freeze':
             for n, p in self.model.named_parameters():
                 if self.if_binary(n):
@@ -413,15 +418,16 @@ class BinOp():
                     p.grad[inds_p].mul_(self.ternary_vals[n + "_pos"].abs())
                     p.grad[inds_n].mul_(self.ternary_vals[n + "_neg"].abs())
 
-    def modify_grad_fenbp(self):
+    def modify_grad_fenbp(self, reg = 1.0):
         delta = self.delta
         for n, p in self.model.named_parameters():
             if self.if_binary(n):
-                y = p.data/delta
-                mask_pos_grad = p.grad.data > 1e-3
-                mask_neg_grad = p.grad.data < -1e-3
-                mask_pos_x = p.data > delta
-                mask_neg_x = p.data < -delta
+                # y = p.data/delta
+                y = p.data * reg
+                mask_pos_grad = p.grad.data > 1e-6
+                mask_neg_grad = p.grad.data < -1e-6
+                mask_pos_x = p.data > 1.0/reg
+                mask_neg_x = p.data < -1.0/reg
 
                 curr_mask = mask_neg_x & mask_neg_grad
                 p.grad.data[curr_mask] *= -2/(y[curr_mask]-1)

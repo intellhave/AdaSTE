@@ -63,7 +63,7 @@ parser.add_argument('-b', '--batch-size', default=128, type=int,
 # Regularization paramters
 parser.add_argument('--binary_reg', default=0.0, type=float,
                     help='Binary regularization strength')
-parser.add_argument('--reg_rate', default=1e-4, type=float,
+parser.add_argument('--reg_rate', default=1.0, type=float,
                     help='Regularization rate')
 parser.add_argument('--adjust_reg', action='store_true', default=True,
                     help='Adjust regularization based on learning rate decay')
@@ -181,7 +181,7 @@ def main():
     # Adjust stepsize regime for specific optimizers
     if args.binary_regime:
         regime = {
-                0: {'optimizer': 'Adam', 'lr': 1e-2, 'weight_decay':1e-9},
+                0: {'optimizer': 'Adam', 'lr': 1e-2},
                 50: {'lr': 5e-3},
                 100: {'lr': 1e-3},
                 150: {'lr': 1e-4},
@@ -210,6 +210,7 @@ def main():
     criterion.type(args.type)
     model.type(args.type)
 
+    # Obtain datasets
     val_data = get_dataset(args.dataset, 'val', transform['eval'])
     val_loader = torch.utils.data.DataLoader(
         val_data,
@@ -231,7 +232,6 @@ def main():
     logging.info('training regime: %s', regime)
 
     # Tool for performing variable projection and related tasks during 
-    # training binary network
     bin_op = BinOp(model, if_binary=if_binary, ttq=False)
 
     # Loop over epochs
@@ -243,6 +243,7 @@ def main():
 
             # Adjust binary regression mode if non-lazy projection
             br = args.reg_rate * epoch
+            # br = 1.0
             # Adjust binary reg according to learning rate
             # if args.adjust_reg:
             # curr_lr = optimizer.param_groups[0]['lr']
@@ -357,9 +358,12 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
     if not(training):
         bin_op.save_params()
         if binarize:
-            bin_op.quantize('deterministic')
+            bin_op.quantize('deterministic_fenbp')
         elif projection_mode == 'lazy':
-            bin_op.prox_operator(br, 'binary')
+            # bin_op.prox_operator(br, 'binary')
+            bin_op.prox_operator(br, 'tanh')
+    else:
+        bin_op.restore()
     
     for i, (inputs, target) in enumerate(data_loader):
         # measure data loading time
@@ -377,7 +381,8 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
         # Binarize if projection mode is {lazy, stochastic bin} and in training
         if training:
             bin_op.save_params()
-            bin_op.prox_operator(br, 'binary')
+            # bin_op.prox_operator(br, 'binary')
+            bin_op.prox_operator(br, 'tanh')
             
         output = model(input_var)
         loss = criterion(output, target_var)
@@ -395,11 +400,11 @@ def forward(data_loader, model, criterion, epoch=0, training=True, optimizer=Non
             # compute gradient and do SGD step
             optimizer.zero_grad()
             loss.backward()
-
             bin_op.restore()
             # Perform FenBP update 
             bin_op.modify_grad_fenbp()
             optimizer.step()
+            # bin_op.clip()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
