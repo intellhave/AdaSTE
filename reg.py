@@ -292,7 +292,8 @@ class BinOp():
         if reg_type == 'tanh':
             for n, p in self.model.named_parameters():
                 if self.if_binary(n):
-                    p_sign = F.hardtanh(p.data*reg, min_val=-1.0, max_val=1.0)
+                    # p_sign = F.hardtanh(p.data*reg, min_val=-1.0, max_val=1.0)
+                    p_sign = torch.tanh(p.data*reg)
                     p.data.copy_(p_sign)
 
         if reg_type == 'ternary':
@@ -425,19 +426,20 @@ class BinOp():
         for n, p in self.model.named_parameters():
             if self.if_binary(n):
                 y = p.data * reg
-                mask_pos_grad = p.grad.data > 1e-2
-                mask_neg_grad = p.grad.data < -1e-2
-                mask_pos_x = p.data > 1.0/reg
-                mask_neg_x = p.data < -1.0/reg
+                p.grad.data *= 1. - torch.tanh(y - 0.01 * p.grad.data).pow(2)
+                # mask_pos_grad = p.grad.data > 1e-3
+                # mask_neg_grad = p.grad.data < -1e-3
+                # mask_pos_x = p.data > 1.0/reg
+                # mask_neg_x = p.data < -1.0/reg
 
-                curr_mask = mask_neg_x & mask_neg_grad
-                p.grad.data[curr_mask] *= -2/(y[curr_mask]-1)
+                # curr_mask = mask_neg_x & mask_neg_grad
+                # p.grad.data[curr_mask] *= -2/(y[curr_mask]-1)
 
-                curr_mask = mask_pos_x & mask_pos_grad
-                p.grad.data[curr_mask] *= -2/(y[curr_mask]+1)
+                # curr_mask = mask_pos_x & mask_pos_grad
+                # p.grad.data[curr_mask] *= -2/(y[curr_mask]+1)
 
-                curr_mask = (mask_neg_x & mask_pos_grad) | (mask_pos_x & mask_neg_grad)
-                p.grad.data[curr_mask] = 0
+                # curr_mask = (mask_neg_x & mask_pos_grad) | (mask_pos_x & mask_neg_grad)
+                # p.grad.data[curr_mask] = 0
 
     def modify_grad_binn(self):
         for n, p in self.model.named_parameters():

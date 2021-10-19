@@ -63,7 +63,7 @@ parser.add_argument('-b', '--batch-size', default=128, type=int,
 # Regularization paramters
 parser.add_argument('--binary_reg', default=0.0, type=float,
                     help='Binary regularization strength')
-parser.add_argument('--reg_rate', default=0.5, type=float,
+parser.add_argument('--reg_rate', default=1.02, type=float,
                     help='Regularization rate')
 parser.add_argument('--adjust_reg', action='store_true', default=True,
                     help='Adjust regularization based on learning rate decay')
@@ -181,9 +181,9 @@ def main():
     # Adjust stepsize regime for specific optimizers
     if args.binary_regime:
         regime = {
-                0: {'optimizer': 'Adam', 'lr': 1e-2},
-                50: {'lr': 1e-2},
-                100: {'lr': 1e-3},
+                0: {'optimizer': 'Adam', 'lr': 1e-3},
+                50: {'lr': 5e-4},
+                100: {'lr': 1e-5},
                 250: {'lr': 1e-4},
         }
     elif args.ttq_regime:
@@ -236,13 +236,14 @@ def main():
 
     # Loop over epochs
     try:
+        br = 10.0
         for epoch in range(args.start_epoch, args.epochs):
 
             if not(args.no_adjust):
                 optimizer = adjust_optimizer(optimizer, epoch, regime)
 
             # Adjust binary regression mode if non-lazy projection
-            br = args.reg_rate * (epoch+1)
+            br = args.reg_rate * br
             # br = 1.0
             # Adjust binary reg according to learning rate
             # if args.adjust_reg:
