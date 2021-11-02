@@ -207,6 +207,8 @@ def main():
                                      batch_affine=(args.bn_affine == 1))
     elif args.model == 'RESNET18':
         model = ResNet18()
+    elif args.model == 'VGG16': #
+        model = models.VGG16(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,batch_affine=(args.bn_affine==1))
     else:
         raise ValueError('Undefined Network')
     print(model)
