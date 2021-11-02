@@ -2,6 +2,7 @@ import torch
 from torch.optim.optimizer import Optimizer
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 import torch.nn.functional as F
+import copy
 
 
 import numpy as np
@@ -15,7 +16,7 @@ def update_input(self, input, output):
 
 class FenBPOpt(Optimizer):
 
-    def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.9999, lamda_init=10, lamda_std=0, reweight=1):
+    def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.9999, lamda_init=10, lamda_std=0, reweight=1, use_STE=False):
         if train_set_size < 1:
             raise ValueError("Invalid number of datapoints: {}".format(train_set_size))
 
@@ -45,6 +46,7 @@ class FenBPOpt(Optimizer):
         self.state['reweight'] = reweight
         self.state['delta']=delta
         self.state['eta']=eta
+        self.state['use_STE']=use_STE
 
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
@@ -65,6 +67,7 @@ class FenBPOpt(Optimizer):
 
         linear_grad = torch.autograd.grad(loss, parameters)  # compute the gradidents
         grad = parameters_to_vector(linear_grad).detach()
+        grad = grad
 
         # Use sign to evaluate
         vector_to_parameters(torch.sign(y), parameters)
@@ -74,50 +77,34 @@ class FenBPOpt(Optimizer):
 
         tau_vec = (1/32) * torch.ones_like(y)
         eta_vec = eta *  torch.ones_like(y)
-        final_grad = grad
+        final_grad = copy.deepcopy(grad)
 
         wbar = (y - tau_vec * grad)
         
 
-        mask_pos_grad = grad > 1e-1
-        mask_neg_grad = grad < -1e-1
+        mask_pos_grad = grad > 1e-3
+        mask_neg_grad = grad < -1e-3
         mask_pos_x = theta > delta
         mask_neg_x = theta < -delta
 
         curr_mask = mask_neg_x & mask_neg_grad
-        # wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]+1))
-        # tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
-        #     tau_vec[curr_mask]), 
-        #     1/(1-eta) * ((y[curr_mask]+1)/grad[curr_mask]))
-        # eta_vec[curr_mask] = 1 - delta * (theta[curr_mask]+delta)/(theta[curr_mask]-delta)
-        eta_vec[curr_mask] = -2/(y[curr_mask]-1)
-        # tau_vec[curr_mask] = 1/(1-eta_vec[curr_mask]) * ((y[curr_mask]+1)/grad[curr_mask])
-        # wbar[curr_mask] = y[curr_mask] - tau_vec[curr_mask] * grad[curr_mask]
+        eta_vec[curr_mask] = -(2)/(y[curr_mask]-1)
+        # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] + 1)/(y[curr_mask]-1)
         final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
-        # final_grad[curr_mask] = grad[curr_mask]
 
         curr_mask = mask_pos_x & mask_pos_grad
-        # wbar[curr_mask] = y[curr_mask] - 1/(1-eta) * ((y[curr_mask]-1))
-        # tau_vec[curr_mask] = torch.max(1e-12 * torch.ones_like(
-        #     tau_vec[curr_mask]), 
-        #     1/(1-eta) * ((y[curr_mask]-1)/grad[curr_mask]))
-
-
-        # eta_vec[curr_mask] = 1 - delta*(theta[curr_mask]-delta)/(theta[curr_mask]+delta)
-        eta_vec[curr_mask] = -2/(y[curr_mask]+1)
-        # tau_vec[curr_mask] = 1/(1-eta_vec[curr_mask]) * ((y[curr_mask]+1)/grad[curr_mask])
-        # wbar[curr_mask] = y[curr_mask] - tau_vec[curr_mask] * grad[curr_mask]
+        eta_vec[curr_mask] = -(2)/(y[curr_mask]+1)
+        # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] - 1)/(y[curr_mask]+1)
         final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
 
         curr_mask = mask_neg_x & mask_pos_grad 
-        final_grad[curr_mask]= 0
+        final_grad[curr_mask]= 0*grad[curr_mask]
 
         curr_mask = mask_pos_x & mask_neg_grad
-        final_grad[curr_mask]= 0 
+        final_grad[curr_mask]= 0*grad[curr_mask]
 
-        gr = final_grad
         
-        return loss, preds, gr
+        return loss, preds, final_grad
 
     def step(self, closure):
         """Performs a single optimization step.
@@ -151,7 +138,7 @@ class FenBPOpt(Optimizer):
         
         # Obtain gradients
         # loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, delta=1.0, eta=0.001,straight_through=False)
-        loss, pred, gr = self.get_grad(closure, lamda, delta=delta, eta = self.state['eta'] )
+        loss, pred, gr = self.get_grad(closure, lamda, delta=delta, eta = self.state['eta'], straight_through=self.state['use_STE'] )
 
         loss_list.append(loss)
         pred_list.append(pred)

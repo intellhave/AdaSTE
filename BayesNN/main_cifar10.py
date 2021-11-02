@@ -42,7 +42,7 @@ def main():
     parser.add_argument('--optim', type=str, default='FenBP', help='Optimizer: BayesBiNN, STE, Adam')
     parser.add_argument('--val-split', type=float, default=0.1, help='Random validation set ratio')
     parser.add_argument('--criterion', type=str, default='cross-entropy', help='loss funcion: square-hinge or cross-entropy')
-    parser.add_argument('--batch-size', type=int, default=50, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -50,7 +50,7 @@ def main():
                         help='number of Monte Carlo samples used in BayesBiNN (default: 1), if 0, point estimate using mean')
     parser.add_argument('--test-samples', type=int,default=0, metavar='N',
                         help='number of Monte Carlo samples used in evaluation for BayesBiNN (default: 1)')
-    parser.add_argument('--epochs', type=int, default=500, metavar='N',
+    parser.add_argument('--epochs', type=int, default=700, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default= 3e-4, metavar='LR',
                         help='learning rate (default: 0.0003)')
@@ -65,7 +65,7 @@ def main():
                         help='BayesBiNN momentum (default: 0.9)')
     parser.add_argument('--data-augmentation', action='store_true', default=True, help='Enable data augmentation')
     # Logging parameters
-    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=400, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
@@ -73,7 +73,7 @@ def main():
     # Computation parameters
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=25, metavar='S',
+    parser.add_argument('--seed', type=int, default=26, metavar='S',
                         help='random seed (default: 10)')
 
     parser.add_argument('--lrschedular', type=str, default='Cosine', help='Mstep,Expo,Cosine')
@@ -205,7 +205,8 @@ def main():
     elif args.model == 'VGGBinaryConnect_STE':
         model = VGGBinaryConnect_STE(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,
                                      batch_affine=(args.bn_affine == 1))
-
+    elif args.model == 'RESNET18':
+        model = ResNet18()
     else:
         raise ValueError('Undefined Network')
     print(model)
@@ -230,8 +231,10 @@ def main():
     elif args.optim == 'FenBP':
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
         optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
-                lr = 1e-4,
-                eta = 0.15)
+                delta = 1e-6,
+                lr = args.lr,
+                use_STE = False,
+                )
 
     # Defining the criterion
     if args.criterion == 'square-hinge':
