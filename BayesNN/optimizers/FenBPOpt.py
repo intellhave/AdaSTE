@@ -48,6 +48,9 @@ class FenBPOpt(Optimizer):
         self.state['eta']=eta
         self.state['use_STE']=use_STE
 
+        self.alpha = 0.01
+        self.beta = 100
+
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
             if len(list(module.parameters())) != 0:
@@ -58,8 +61,13 @@ class FenBPOpt(Optimizer):
 
     def get_grad(self, closure, theta, delta, eta, straight_through=False):
         parameters = self.param_groups[0]['params']
-        y = theta/delta
-        w_vector = F.hardtanh(y, min_val=-1.0, max_val=1.0)
+        beta = self.beta
+        alpha = self.alpha
+
+        # y = theta/delta
+        y = theta
+        w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta))
+        # w_vector = F.hardtanh(y, min_val=-1.0, max_val=1.0)
         vector_to_parameters(w_vector, parameters)
 
         # Get loss and predictions
@@ -67,7 +75,6 @@ class FenBPOpt(Optimizer):
 
         linear_grad = torch.autograd.grad(loss, parameters)  # compute the gradidents
         grad = parameters_to_vector(linear_grad).detach()
-        grad = grad
 
         # Use sign to evaluate
         vector_to_parameters(torch.sign(y), parameters)
@@ -75,11 +82,10 @@ class FenBPOpt(Optimizer):
         if straight_through:
             return loss, preds, grad
 
-        tau_vec = (1/32) * torch.ones_like(y)
-        eta_vec = eta *  torch.ones_like(y)
-        final_grad = copy.deepcopy(grad)
-
-        wbar = (y - tau_vec * grad)
+        # tau_vec = (1/32) * torch.ones_like(y)
+        # eta_vec = eta *  torch.ones_like(y)
+        # final_grad = copy.deepcopy(grad)
+        # wbar = (y - tau_vec * grad)
         
 
         mask_pos_grad = grad > 1e-3
@@ -87,24 +93,30 @@ class FenBPOpt(Optimizer):
         mask_pos_x = theta > delta
         mask_neg_x = theta < -delta
 
-        curr_mask = mask_neg_x & mask_neg_grad
-        eta_vec[curr_mask] = -(2)/(y[curr_mask]-1)
-        # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] + 1)/(y[curr_mask]-1)
-        final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
+        scale = torch.ones_like(y)
+        mask = (mask_pos_x & mask_pos_grad) | (mask_neg_x & mask_neg_grad)
+        scale[mask] = torch.clamp(1./y[mask].abs(), min=0, max = 0.5)
 
-        curr_mask = mask_pos_x & mask_pos_grad
-        eta_vec[curr_mask] = -(2)/(y[curr_mask]+1)
-        # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] - 1)/(y[curr_mask]+1)
-        final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
+        mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
+        scale[mask] = 0.0
 
-        curr_mask = mask_neg_x & mask_pos_grad 
-        final_grad[curr_mask]= 0*grad[curr_mask]
+        grad *= scale
+        # curr_mask = mask_neg_x & mask_neg_grad
+        # eta_vec[curr_mask] = -(2)/(y[curr_mask]-1)
+        # # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] + 1)/(y[curr_mask]-1)
+        # final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
 
-        curr_mask = mask_pos_x & mask_neg_grad
-        final_grad[curr_mask]= 0*grad[curr_mask]
+        # curr_mask = mask_pos_x & mask_pos_grad
+        # eta_vec[curr_mask] = -(2)/(y[curr_mask]+1)
+        # # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] - 1)/(y[curr_mask]+1)
+        # final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
 
-        
-        return loss, preds, final_grad
+        # curr_mask = mask_neg_x & mask_pos_grad 
+        # final_grad[curr_mask]= 0*grad[curr_mask]
+
+        # curr_mask = mask_pos_x & mask_neg_grad
+        # final_grad[curr_mask]= 0*grad[curr_mask]
+        return loss, preds, grad
 
     def step(self, closure):
         """Performs a single optimization step.
