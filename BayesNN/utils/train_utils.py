@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pdb
+import logging
 
 PATH_to_log_dir = './log_dir'
 
@@ -53,9 +54,27 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
     best_acc = 0
     best_test_acc = 0
 
-
     PATH_to_log_dir = os.path.join(args.out_dir, 'log_dir_{}'.format(args.experiment_id))
     writer = SummaryWriter(PATH_to_log_dir)
+    
+    # Setup logging
+    log_file = os.path.join(PATH_to_log_dir, 'log.txt')
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(asctime)s - %(levelname)s - %(message)s",
+                        datefmt="%Y-%m-%d %H:%M:%S",
+                        filename=log_file,
+                        filemode='w')
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+
+    logging.info("Start training ---- {} ".format(args.model))
+    logging.info('===========================\n')
+    for key, val in vars(args).items():
+        logging.info('{}: {}'.format(key, val))
+    logging.info('===========================\n')
     
     if args.lrschedular == 'Mstep':
         opt_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[args.epochs//2, args.epochs//4*3,150,250,350,450], gamma = 0.1)
@@ -76,7 +95,6 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
         raise ValueError('Wrong LR schedule!!')
         
 
-
     #################################
     # Training and Evaluation Part
     global_step = 0
@@ -86,7 +104,6 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
         # Debug
         # val_loss, val_accuracy = test_model(args, model, testloader, criterion, optimizer, bn_optimizer)
         print('Epoch[%d]:' % epoch)
-        # import pdb; pdb.set_trace()
 
         model.train(True)
 
@@ -170,7 +187,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
         train_loss = running_train_loss / len(trainloader.sampler)
         train_accuracy_hist.append(train_accuracy)
         train_loss_hist.append(train_loss)
-        print('## Epoch[%d], Train Loss: %f   &   Train Accuracy: %f' % (epoch, train_loss, train_accuracy))
+        logging.info('## Epoch[%d], Train Loss: %f   &   Train Accuracy: %f' % (epoch, train_loss, train_accuracy))
 
 
 
@@ -180,15 +197,11 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
             val_loss, val_accuracy = test_model(args, model, valloader, criterion, optimizer, bn_optimizer)
             val_accuracy_hist.append(val_accuracy)
             val_loss_hist.append(val_loss)
-            print('## Epoch[%d], Val Loss:   %f   &   Val Accuracy:   %f ' % (epoch, val_loss, val_accuracy))
+            logging.info('## Epoch[%d], Val Loss:   %f   &   Val Accuracy:   %f ' % (epoch, val_loss, val_accuracy))
 
             # remember best acc@1 and save checkpoint
             is_best = val_accuracy > best_acc
             best_acc = max(val_accuracy, best_acc)
-
-            # for n, p in model.named_parameters():
-            #     pdb.set_trace()
-            #     print(p)
 
             if is_best and args.save_model:
                 state = {
@@ -206,8 +219,8 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
             test_accuracy_hist.append(test_accuracy)
             test_loss_hist.append(test_loss)
             best_test_acc = max(best_test_acc, test_accuracy)
-            print('## Epoch[%d], Test Loss:  %f   &   Test Accuracy:  %f, Best Acc: %f' % (epoch, test_loss, test_accuracy, best_test_acc))
-        print('')
+            logging.info('## Epoch[%d], Test Loss:  %f   &   Test Accuracy:  %f, Best Acc: %f' % (epoch, test_loss, test_accuracy, best_test_acc))
+        logging.info('')
 
     writer.close()
 
@@ -242,7 +255,6 @@ def test_model(args, model, test_loader, criterion, optimizer, bn_optimizer):
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 total_correct += pred.eq(target.view_as(pred)).sum().item()
 
-    print('Testing --- total correct = ', total_correct, ' total loss = ', test_loss)
     test_loss /= len(test_loader.sampler)
     test_accuracy = 100. * total_correct / len(test_loader.sampler)
 

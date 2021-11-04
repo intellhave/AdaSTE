@@ -15,8 +15,8 @@ from models import *
 
 from optimizers import BayesBiNN as BayesBiNN
 from optimizers import FenBPOpt
-# from optimizers import FenBPOptQuad
-# from optimizers import FenBPOptProx
+from optimizers import FenBPOptQuad
+from optimizers import FenBPOptProx
 
 from utils import plot_result, train_model, SquaredHingeLoss, save_train_history
 import numpy as np
@@ -42,7 +42,7 @@ def main():
     parser.add_argument('--optim', type=str, default='FenBP', help='Optimizer: BayesBiNN, STE, Adam')
     parser.add_argument('--val-split', type=float, default=0.1, help='Random validation set ratio')
     parser.add_argument('--criterion', type=str, default='cross-entropy', help='loss funcion: square-hinge or cross-entropy')
-    parser.add_argument('--batch-size', type=int, default=100, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
