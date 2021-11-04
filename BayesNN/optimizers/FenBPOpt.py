@@ -6,7 +6,6 @@ import copy
 
 
 import numpy as np
-import pdb
 
 required = object()
 
@@ -36,6 +35,7 @@ class FenBPOpt(Optimizer):
 
         mixtures_coeff = torch.randint_like(p,2)
         self.state['lamda'] =  mixtures_coeff * (lamda_init + np.sqrt(lamda_std)* torch.randn_like(p)) + (1-mixtures_coeff) * (-lamda_init + np.sqrt(lamda_std) * torch.randn_like(p))#  torch.log(1+p_value) - torch.log(1-p_value)  #torch.randn_like(p) # 100*torch.randn_like(p) # math.sqrt(train_set_size)*torch.randn_like(p)  #such initialization is empirically good, others are OK of course
+        # self.state['lamda'] = p
         
         #Momentum term
         self.state['momentum'] = torch.zeros_like(p, device=device) # momentum
@@ -47,9 +47,10 @@ class FenBPOpt(Optimizer):
         self.state['delta']=delta
         self.state['eta']=eta
         self.state['use_STE']=use_STE
+        # self.state['use_STE']=True
 
         self.alpha = 0.01
-        self.beta = 100
+        self.beta = 0.01
 
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
@@ -63,13 +64,12 @@ class FenBPOpt(Optimizer):
         parameters = self.param_groups[0]['params']
         beta = self.beta
         alpha = self.alpha
-
-        # y = theta/delta
+        vector_to_parameters(theta, parameters)
         y = theta
-        w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta))
-        # w_vector = F.hardtanh(y, min_val=-1.0, max_val=1.0)
+        # w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta))
+        w_vector = F.hardtanh(theta/1e-6, min_val=-1.0, max_val=1.0)
         vector_to_parameters(w_vector, parameters)
-
+        
         # Get loss and predictions
         loss, preds = closure()
 
@@ -77,16 +77,10 @@ class FenBPOpt(Optimizer):
         grad = parameters_to_vector(linear_grad).detach()
 
         # Use sign to evaluate
-        vector_to_parameters(torch.sign(y), parameters)
+        vector_to_parameters(torch.sign(theta), parameters)
 
         if straight_through:
             return loss, preds, grad
-
-        # tau_vec = (1/32) * torch.ones_like(y)
-        # eta_vec = eta *  torch.ones_like(y)
-        # final_grad = copy.deepcopy(grad)
-        # wbar = (y - tau_vec * grad)
-        
 
         mask_pos_grad = grad > 1e-3
         mask_neg_grad = grad < -1e-3
@@ -101,21 +95,6 @@ class FenBPOpt(Optimizer):
         scale[mask] = 0.0
 
         grad *= scale
-        # curr_mask = mask_neg_x & mask_neg_grad
-        # eta_vec[curr_mask] = -(2)/(y[curr_mask]-1)
-        # # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] + 1)/(y[curr_mask]-1)
-        # final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
-
-        # curr_mask = mask_pos_x & mask_pos_grad
-        # eta_vec[curr_mask] = -(2)/(y[curr_mask]+1)
-        # # eta_vec[curr_mask] = 1 - delta*(y[curr_mask] - 1)/(y[curr_mask]+1)
-        # final_grad[curr_mask] = eta_vec[curr_mask] * grad[curr_mask]
-
-        # curr_mask = mask_neg_x & mask_pos_grad 
-        # final_grad[curr_mask]= 0*grad[curr_mask]
-
-        # curr_mask = mask_pos_x & mask_neg_grad
-        # final_grad[curr_mask]= 0*grad[curr_mask]
         return loss, preds, grad
 
     def step(self, closure):
@@ -155,11 +134,6 @@ class FenBPOpt(Optimizer):
         loss_list.append(loss)
         pred_list.append(pred)
 
-        # gr = gr + grad_soft
-        # gr = grad_soft
-        # gr = grad
-    
-
         # grad_hat = defaults['train_set_size'] * grad
         grad_hat = defaults['train_set_size'] * gr
         grad_hat = grad_hat.mul(defaults['train_set_size'])
@@ -176,12 +150,5 @@ class FenBPOpt(Optimizer):
         # Update lamda vector
         self.state['lamda'] = self.state['lamda'] - self.param_groups[0]['lr'] * self.state['momentum']/bias_correction1
 
-
         return loss, pred_list
-
-
-
-
-
-
 

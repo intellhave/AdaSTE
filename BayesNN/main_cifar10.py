@@ -15,8 +15,8 @@ from models import *
 
 from optimizers import BayesBiNN as BayesBiNN
 from optimizers import FenBPOpt
-from optimizers import FenBPOptQuad
-from optimizers import FenBPOptProx
+# from optimizers import FenBPOptQuad
+# from optimizers import FenBPOptProx
 
 from utils import plot_result, train_model, SquaredHingeLoss, save_train_history
 import numpy as np
@@ -73,7 +73,7 @@ def main():
     # Computation parameters
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--seed', type=int, default=26, metavar='S',
+    parser.add_argument('--seed', type=int, default=100, metavar='S',
                         help='random seed (default: 10)')
 
     parser.add_argument('--lrschedular', type=str, default='Cosine', help='Mstep,Expo,Cosine')
@@ -110,8 +110,6 @@ def main():
     ngpus_per_node = torch.cuda.device_count()
 
     gpu_num = []
-    for i in range(ngpus_per_node):
-        gpu_num.append(i)
 
     print("Number of GPUs:%d", ngpus_per_node)
 
@@ -122,8 +120,12 @@ def main():
         print("Use GPU: {} for training".format(gpu_devices))
 
 
-    torch.manual_seed(args.seed + args.experiment_id)
-    np.random.seed(args.seed + args.experiment_id)
+    # torch.manual_seed(args.seed + args.experiment_id)
+    # np.random.seed(args.seed + args.experiment_id)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.manual_seed(args.seed)
+
     now = time.strftime("%Y_%m_%d_%H_%M_%S",time.localtime(time.time())) # to avoid overwrite
     args.out_dir = os.path.join('./outputs', 'cifar10_{}_{}_lr{}_{}_id{}'.format(args.model, args.optim,args.lr,now,args.experiment_id))
     os.makedirs(args.out_dir, exist_ok=True)
@@ -193,7 +195,7 @@ def main():
     test_dataset = datasets.CIFAR10('./data', train=False, transform=transform_test)
     test_loader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=args.test_batch_size, shuffle=True, **kwargs
+        batch_size=args.test_batch_size, shuffle=False, **kwargs
     )
     print('{} test datapoints.\n'.format(len(test_loader.sampler)))
 
@@ -216,11 +218,18 @@ def main():
     num_parameters = sum([l.nelement() for l in model.parameters()])
     print("Number of Network parameters: {}".format(num_parameters))
 
-    model = torch.nn.DataParallel(model,device_ids=gpu_num)
-    
+    # model = torch.nn.DataParallel(model,device_ids=gpu_num)
     model = model.to(args.device)
 
-    cudnn.benchmark = True
+    # Initialize model
+    # for n,p in model.parameters():
+    for n, p in model.named_parameters():
+        if len(p.size())>=2:
+            nn.init.xavier_uniform_(p)
+        else:
+            nn.init.normal_(p, std=0.1)
+
+    cudnn.benchmark = False
     # Defining the optimizer
     if args.optim == 'Adam' or args.optim == 'STE':
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
