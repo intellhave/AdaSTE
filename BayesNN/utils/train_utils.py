@@ -163,7 +163,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
 
                 # Adjust beta 
                 if args.optim=='FenBP' and global_step % 500 == 0:
-                    optimizer.beta *= 1.05
+                    optimizer.beta = min(optimizer.beta*1.05, 1/optimizer.alpha + 100)
                     print('Current beta: ', optimizer.beta)
 
                 loss, output = optimizer.step(closure)
