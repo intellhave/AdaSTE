@@ -7,16 +7,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data.sampler import SubsetRandomSampler
-from torchvision import datasets, transforms
 
 from models import *
 from optimizers import BayesBiNN as BayesBiNN
+from optimizers import FenBPOpt
 from utils import plot_result, train_model, SquaredHingeLoss100, save_train_history
 import numpy as np
 
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
-
+from torchvision import datasets, transforms
 
 import time
 def timeSince(since):
@@ -228,6 +228,13 @@ def main():
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
 
         optimizer = BayesBiNN(model,lamda_init = args.lamda,lamda_std = args.lamda_std,  temperature = args.temperature, train_set_size=effective_trainsize, lr=args.lr, betas=args.momentum, num_samples=args.train_samples)
+    elif args.optim == 'FenBP':
+        effective_trainsize = len(train_loader.sampler) * args.trainset_scale
+        optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
+                delta = 1e-6,
+                lr = args.lr,
+                use_STE = False,
+                )
 
 
     # Defining the criterion
