@@ -35,7 +35,7 @@ class FenBPOpt(Optimizer):
 
         mixtures_coeff = torch.randint_like(p,2)
         self.state['lamda'] =  mixtures_coeff * (lamda_init + np.sqrt(lamda_std)* torch.randn_like(p)) + (1-mixtures_coeff) * (-lamda_init + np.sqrt(lamda_std) * torch.randn_like(p))#  torch.log(1+p_value) - torch.log(1-p_value)  #torch.randn_like(p) # 100*torch.randn_like(p) # math.sqrt(train_set_size)*torch.randn_like(p)  #such initialization is empirically good, others are OK of course
-        # self.state['lamda'] = p
+        # self.state['lamda'] = p.detach()
         
         #Momentum term
         self.state['momentum'] = torch.zeros_like(p, device=device) # momentum
@@ -66,8 +66,8 @@ class FenBPOpt(Optimizer):
         alpha = self.alpha
         vector_to_parameters(theta, parameters)
         y = theta
-        # w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta))
-        w_vector = F.hardtanh(theta/1e-6, min_val=-1.0, max_val=1.0)
+        w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta))
+        #w_vector = F.hardtanh(theta/1e-6, min_val=-1.0, max_val=1.0)
         vector_to_parameters(w_vector, parameters)
         
         # Get loss and predictions
