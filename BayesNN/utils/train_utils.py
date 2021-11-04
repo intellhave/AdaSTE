@@ -51,6 +51,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
     trainloader, valloader, testloader = dataloaders
 
     best_acc = 0
+    best_test_acc = 0
 
 
     PATH_to_log_dir = os.path.join(args.out_dir, 'log_dir_{}'.format(args.experiment_id))
@@ -79,10 +80,16 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
     #################################
     # Training and Evaluation Part
     global_step = 0
+    rho = 1.0
 
     for epoch in range(args.epochs):
-        model.train(True)
+        # Debug
+        # val_loss, val_accuracy = test_model(args, model, testloader, criterion, optimizer, bn_optimizer)
         print('Epoch[%d]:' % epoch)
+        # import pdb; pdb.set_trace()
+
+        model.train(True)
+
 
         # learning rate decaly
         opt_scheduler.step()
@@ -96,17 +103,12 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
 
             global_step += i
 
-
             inputs, labels = data
             inputs, labels = inputs.to(args.device), labels.to(args.device)
 
             if args.optim == 'BayesBiNN' and bn_optimizer is not None: #here we only perform optimization for BayesBiNN optimizer bn_optimizer.zero_grad() logits = model.forward(inputs)
                 loss = criterion(logits, labels)
                 loss.backward()
-
-                # for n, p in model.named_parameters():
-                #     pdb.set_trace()
-                #     print(p)
                 bn_optimizer.step()
 
             if args.optim == 'STE':
@@ -129,7 +131,6 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
 
             else:
                 if args.optim == 'BayesBiNN' or args.optim=='FenBP':
-                    # pdb.set_trace()
                     def closure():
                         optimizer.zero_grad()
                         output = model.forward(inputs)
@@ -143,7 +144,11 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
                         loss.backward()
                         return loss, logits
 
-                # pdb.set_trace()
+                # Adjust beta 
+                if args.optim=='FenBP' and global_step % 500 == 0:
+                    optimizer.beta *= 1.05
+                    print('Current beta: ', optimizer.beta)
+
                 loss, output = optimizer.step(closure)
 
             if isinstance(output, list):
@@ -175,12 +180,11 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
             val_loss, val_accuracy = test_model(args, model, valloader, criterion, optimizer, bn_optimizer)
             val_accuracy_hist.append(val_accuracy)
             val_loss_hist.append(val_loss)
-            print('## Epoch[%d], Val Loss:   %f   &   Val Accuracy:   %f' % (epoch, val_loss, val_accuracy))
+            print('## Epoch[%d], Val Loss:   %f   &   Val Accuracy:   %f ' % (epoch, val_loss, val_accuracy))
 
             # remember best acc@1 and save checkpoint
             is_best = val_accuracy > best_acc
             best_acc = max(val_accuracy, best_acc)
-
 
             # for n, p in model.named_parameters():
             #     pdb.set_trace()
@@ -201,9 +205,9 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
             test_loss, test_accuracy = test_model(args, model, testloader, criterion, optimizer, bn_optimizer)
             test_accuracy_hist.append(test_accuracy)
             test_loss_hist.append(test_loss)
-            print('## Epoch[%d], Test Loss:  %f   &   Test Accuracy:  %f' % (epoch, test_loss, test_accuracy))
+            best_test_acc = max(best_test_acc, test_accuracy)
+            print('## Epoch[%d], Test Loss:  %f   &   Test Accuracy:  %f, Best Acc: %f' % (epoch, test_loss, test_accuracy, best_test_acc))
         print('')
-
 
     writer.close()
 
@@ -211,6 +215,9 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
 
 def test_model(args, model, test_loader, criterion, optimizer, bn_optimizer):
     model.eval()
+    for n, p in model.named_parameters():
+        p.data = p.data.sign()
+
     test_loss = 0
     total_correct = 0
     with torch.no_grad():
@@ -235,6 +242,7 @@ def test_model(args, model, test_loader, criterion, optimizer, bn_optimizer):
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 total_correct += pred.eq(target.view_as(pred)).sum().item()
 
+    print('Testing --- total correct = ', total_correct, ' total loss = ', test_loss)
     test_loss /= len(test_loader.sampler)
     test_accuracy = 100. * total_correct / len(test_loader.sampler)
 
