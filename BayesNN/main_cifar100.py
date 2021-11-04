@@ -7,17 +7,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data.sampler import SubsetRandomSampler
+from torchvision import datasets, transforms
 
 from models import *
 from optimizers import BayesBiNN as BayesBiNN
-from optimizers import FenBPOpt
 from utils import plot_result, train_model, SquaredHingeLoss100, save_train_history
 import numpy as np
 
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 
-from torchvision import datasets, transforms
 
 import time
 def timeSince(since):
@@ -33,7 +32,7 @@ def main():
     parser.add_argument('--bnmomentum', type=float, default=0.2, help='BN layer momentum value')
 
     # Optimization parameters
-    parser.add_argument('--optim', type=str, default='FenBP', help='Optimizer: BayesBiNN, STE or Adam')
+    parser.add_argument('--optim', type=str, default='BayesBiNN', help='Optimizer: BayesBiNN, STE or Adam')
     parser.add_argument('--val-split', type=float, default=0.1, help='Random validation set ratio')
     parser.add_argument('--criterion', type=str, default='cross-entropy', help='loss funcion: square-hinge or cross-entropy')
     parser.add_argument('--batch-size', type=int, default=50, metavar='N',
@@ -61,7 +60,7 @@ def main():
     # Logging parameters
     parser.add_argument('--log-interval', type=int, default=10000, metavar='N',
                         help='how many batches to wait before logging training status')
-    parser.add_argument('--save-model', action='store_true', default=False,
+    parser.add_argument('--save-model', action='store_true', default=True,
                         help='For Saving the current Model')
     parser.add_argument('--experiment-id', type=int, default=0, help='Experiment ID for log files (int)')
     # Computation parameters
@@ -199,7 +198,12 @@ def main():
 
     # Defining the model.
     in_channels, out_features = 3, 100
-    if args.model == 'VGGBinaryConnect':
+    if args.model == 'RESNET18':
+        model = models.ResNet(models.BasicBlock, [2,2,2,2], in_channels, 32, out_features)
+        models.ResNet18()
+    elif args.model == 'VGG16': #
+        model = models.VGG16(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,batch_affine=(args.bn_affine==1))
+    elif args.model == 'VGGBinaryConnect':
         model = VGGBinaryConnect(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,batch_affine=(args.bn_affine==1))
     elif args.model == 'VGGBinaryConnect_STE':
         model = VGGBinaryConnect_STE(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,
@@ -224,11 +228,7 @@ def main():
         effective_trainsize = len(train_loader.sampler) * args.trainset_scale
 
         optimizer = BayesBiNN(model,lamda_init = args.lamda,lamda_std = args.lamda_std,  temperature = args.temperature, train_set_size=effective_trainsize, lr=args.lr, betas=args.momentum, num_samples=args.train_samples)
-    elif args.optim == 'FenBP':
-        effective_trainsize = len(train_loader.sampler) * args.trainset_scale
-        optimizer=FenBPOpt(model,train_set_size=effective_trainsize, 
-                lr = 1e-4,
-                eta = 0.9)
+
 
     # Defining the criterion
     if args.criterion == 'square-hinge':
@@ -239,6 +239,7 @@ def main():
         raise ValueError('Please select loss criterion in {square-hinge, cross-entropy}')
 
     start = time.time()
+
 
     # Training the model
     results = train_model(args, model, [train_loader, val_loader, test_loader], criterion, optimizer)
