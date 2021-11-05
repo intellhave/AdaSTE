@@ -234,6 +234,7 @@ def main():
                 delta = 1e-6,
                 lr = args.lr,
                 use_STE = False,
+                betas = args.momentum
                 )
 
 

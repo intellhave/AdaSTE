@@ -42,7 +42,7 @@ def main():
     parser.add_argument('--optim', type=str, default='FenBP', help='Optimizer: BayesBiNN, STE, Adam')
     parser.add_argument('--val-split', type=float, default=0.1, help='Random validation set ratio')
     parser.add_argument('--criterion', type=str, default='cross-entropy', help='loss funcion: square-hinge or cross-entropy')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=50, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -56,12 +56,12 @@ def main():
                         help='learning rate (default: 0.0003)')
     parser.add_argument('--lr-end', type=float, default= 1e-16, metavar='LR',
                         help='end learning rate (default: 0.01)')
-    parser.add_argument('--lr-decay', type=float, default= 0.9, metavar='LR-decay',
+    parser.add_argument('--lr-decay', type=float, default= 0.99, metavar='LR-decay',
                         help='learning rated decay factor for each epoch (default: 0.9)')
     parser.add_argument('--decay-steps', type=int, default=1, metavar='N',
                         help='LR rate decay steps (default: 1)')   
 
-    parser.add_argument('--momentum', type=float, default=0.0, metavar='M',
+    parser.add_argument('--momentum', type=float, default=0.99, metavar='M',
                         help='BayesBiNN momentum (default: 0.9)')
     parser.add_argument('--data-augmentation', action='store_true', default=True, help='Enable data augmentation')
     # Logging parameters
@@ -245,6 +245,7 @@ def main():
                 delta = 1e-6,
                 lr = args.lr,
                 use_STE = False,
+                betas = args.momentum
                 )
 
     # Defining the criterion
