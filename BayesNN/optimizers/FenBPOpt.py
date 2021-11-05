@@ -50,7 +50,7 @@ class FenBPOpt(Optimizer):
         # self.state['use_STE']=True
 
         self.alpha = 0.01
-        self.beta = 1000
+        self.beta = 0.01
 
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
