@@ -15,7 +15,7 @@ def update_input(self, input, output):
 
 class FenBPOpt(Optimizer):
 
-    def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.9999, lamda_init=10, lamda_std=0, reweight=1, use_STE=False):
+    def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.9999, lamda_init=10, lamda_std=0, reweight=1, use_STE=False, fenbp_alpha = 0.01, fenbp_beta = 0.01):
         if train_set_size < 1:
             raise ValueError("Invalid number of datapoints: {}".format(train_set_size))
 
@@ -49,8 +49,8 @@ class FenBPOpt(Optimizer):
         self.state['use_STE']=use_STE
         # self.state['use_STE']=True
 
-        self.alpha = 0.01
-        self.beta = 0.01
+        self.alpha = fenbp_alpha
+        self.beta = fenbp_beta
 
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
