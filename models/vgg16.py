@@ -7,49 +7,49 @@ class VGG16(nn.Module):
     """VGG16 used for Cifar10.
        This model is the Conv architecture used in paper "An empirical study of Binary NN optimization".
     """
-    def __init__(self, in_features, out_features, eps=1e-5, momentum=0.2, batch_affine=False):
+    def __init__(self, in_features, out_features, eps=1e-5, momentum=0.2, batch_affine=False, have_bias=True):
         super(VGG16, self).__init__()
         self.in_features = in_features
-        self.conv1 = nn.Conv2d(in_features, 64, kernel_size=3, padding=1,bias=False)
+        self.conv1 = nn.Conv2d(in_features, 64, kernel_size=3, padding=1,bias=have_bias)
         self.bn1 = nn.BatchNorm2d(64, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1,bias=False)
+        self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1,bias=have_bias)
         self.bn2 = nn.BatchNorm2d(64, eps=eps, momentum=momentum,affine=batch_affine)
 
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1,bias=False)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1,bias=have_bias)
         self.bn3 = nn.BatchNorm2d(128, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv4 = nn.Conv2d(128, 128, kernel_size=3, padding=1,bias=False)
+        self.conv4 = nn.Conv2d(128, 128, kernel_size=3, padding=1,bias=have_bias)
         self.bn4 = nn.BatchNorm2d(128, eps=eps, momentum=momentum,affine=batch_affine)
 
 
-        self.conv5 = nn.Conv2d(128, 256, kernel_size=3, padding=1,bias=False)
+        self.conv5 = nn.Conv2d(128, 256, kernel_size=3, padding=1,bias=have_bias)
         self.bn5 = nn.BatchNorm2d(256, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv6 = nn.Conv2d(256, 256, kernel_size=3, padding=1,bias=False)
+        self.conv6 = nn.Conv2d(256, 256, kernel_size=3, padding=1,bias=have_bias)
         self.bn6 = nn.BatchNorm2d(256, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv7 = nn.Conv2d(256, 256, kernel_size=3, padding=1,bias=False)
+        self.conv7 = nn.Conv2d(256, 256, kernel_size=3, padding=1,bias=have_bias)
         self.bn7 = nn.BatchNorm2d(256, eps=eps, momentum=momentum,affine=batch_affine)
 
-        self.conv8 = nn.Conv2d(256, 512, kernel_size=3, padding=1,bias=False)
+        self.conv8 = nn.Conv2d(256, 512, kernel_size=3, padding=1,bias=have_bias)
         self.bn8 = nn.BatchNorm2d(512, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv9 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=False)
+        self.conv9 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=have_bias)
         self.bn9 = nn.BatchNorm2d(512, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv10 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=False)
+        self.conv10 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=have_bias)
         self.bn10 = nn.BatchNorm2d(512, eps=eps, momentum=momentum,affine=batch_affine)
 
 
-        self.conv11 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=False)
+        self.conv11 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=have_bias)
         self.bn11 = nn.BatchNorm2d(512, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv12 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=False)
+        self.conv12 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=have_bias)
         self.bn12 = nn.BatchNorm2d(512, eps=eps, momentum=momentum,affine=batch_affine)
-        self.conv13 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=False)
+        self.conv13 = nn.Conv2d(512, 512, kernel_size=3, padding=1,bias=have_bias)
         self.bn13 = nn.BatchNorm2d(512, eps=eps, momentum=momentum,affine=batch_affine)
 
-        self.fc14 = nn.Linear(512, 512, bias=False)
+        self.fc14 = nn.Linear(512, 512, bias=have_bias)
         self.bn14 = nn.BatchNorm1d(512,affine=batch_affine)
 
-        self.fc15 = nn.Linear(512, 512, bias=False)
+        self.fc15 = nn.Linear(512, 512, bias=have_bias)
         self.bn15 = nn.BatchNorm1d(512,affine=batch_affine)
 
-        self.fc16 = nn.Linear(512, out_features, bias=False)
+        self.fc16 = nn.Linear(512, out_features, bias=have_bias)
         self.bn16 = nn.BatchNorm1d(out_features,affine=batch_affine)
 
     def forward(self, x):

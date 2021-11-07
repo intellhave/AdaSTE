@@ -4,11 +4,12 @@ import torch.nn.functional as F
 import math
 
 __all__ = ['resnet']
+have_bias = True
 
 def conv3x3(in_planes, out_planes, stride=1):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
+                     padding=1, bias=have_bias)
 
 
 def init_model(model):
@@ -58,12 +59,12 @@ class Bottleneck(nn.Module):
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):
         super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
+        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
-                               padding=1, bias=False)
+                               padding=1, bias=have_bias)
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
+        self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=have_bias)
         self.bn3 = nn.BatchNorm2d(planes * 4)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -212,15 +213,15 @@ class BasicBlock(nn.Module):
 
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(planes, affine=False, eps=1e-5, momentum=0.2)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=have_bias)
         self.bn2 = nn.BatchNorm2d(planes, affine=False, eps=1e-5, momentum=0.2)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=have_bias),
                 nn.BatchNorm2d(self.expansion*planes, affine=False, eps=1e-5, momentum=0.2)
             )
 
@@ -237,17 +238,17 @@ class Bottleneck(nn.Module):
 
     def __init__(self, in_planes, planes, stride=1):
         super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(planes, affine=False, eps=1e-5, momentum=0.2)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=have_bias)
         self.bn2 = nn.BatchNorm2d(planes, affine=False, eps=1e-5, momentum=0.2)
-        self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=False)
+        self.conv3 = nn.Conv2d(planes, self.expansion*planes, kernel_size=1, bias=have_bias)
         self.bn3 = nn.BatchNorm2d(self.expansion*planes, affine=False, eps=1e-5, momentum=0.2)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=have_bias),
                 nn.BatchNorm2d(self.expansion*planes, affine=False, eps=1e-5, momentum=0.2)
             )
 
@@ -325,5 +326,4 @@ def ResNet152(input_channels=3, imsize=32, output_dim=10):
 
 
 def resnet(**kwargs):
-    num_classes = 100 if kwargs['dataset']=='cifar100' else 10
-    return ResNet18(input_channels=3, imsize=32, output_dim=num_classes)
+        return ResNet18(input_channels=3, imsize=32, output_dim=10)
