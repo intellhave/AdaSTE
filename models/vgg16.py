@@ -87,4 +87,7 @@ class VGG16(nn.Module):
 
 def vgg16(**kwargs):
     num_classes = getattr(kwargs,'num_classes', 10)
+    dataset = kwargs['dataset']
+    if dataset=='cifar100':
+        num_classes=100
     return VGG16(3, num_classes)

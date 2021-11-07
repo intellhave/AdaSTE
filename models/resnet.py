@@ -325,4 +325,5 @@ def ResNet152(input_channels=3, imsize=32, output_dim=10):
 
 
 def resnet(**kwargs):
-        return ResNet18(input_channels=3, imsize=32, output_dim=10)
+    num_classes = 100 if kwargs['dataset']=='cifar100' else 10
+    return ResNet18(input_channels=3, imsize=32, output_dim=num_classes)
