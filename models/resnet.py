@@ -6,7 +6,7 @@ import math
 __all__ = ['resnet']
 have_bias = True
 
-def conv3x3(in_planes, out_planes, stride=1):
+def conv3x3(in_planes, out_planes, stride=1, have_bias=True):
     "3x3 convolution with padding"
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=have_bias)
@@ -57,7 +57,7 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, have_bias=True):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -211,7 +211,7 @@ class Bottleneck(nn.Module):
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, have_bias=True):
         super(BasicBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(planes, affine=False, eps=1e-5, momentum=0.2)
@@ -236,7 +236,7 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, have_bias=True):
         super(Bottleneck, self).__init__()
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(planes, affine=False, eps=1e-5, momentum=0.2)
@@ -262,7 +262,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, input_channels=3, imsize=32, output_dim=10):
+    def __init__(self, block, num_blocks, input_channels=3, imsize=32, output_dim=10, have_bias=True):
         super(ResNet, self).__init__()
         self.in_planes = 64
 
@@ -273,7 +273,7 @@ class ResNet(nn.Module):
         if imsize == 64:    # tinyimagenet
             self.stride1 = 2
 
-        self.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=3, stride=self.stride1, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(self.input_channels, 64, kernel_size=3, stride=self.stride1, padding=1, bias=have_bias)
         self.bn1 = nn.BatchNorm2d(64, affine=False, eps=1e-5, momentum=0.2)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
@@ -326,4 +326,4 @@ def ResNet152(input_channels=3, imsize=32, output_dim=10):
 
 
 def resnet(**kwargs):
-        return ResNet18(input_channels=3, imsize=32, output_dim=10)
+    return ResNet18(input_channels=3, imsize=32, output_dim=10)

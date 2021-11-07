@@ -8,8 +8,10 @@ import pdb
 
 # Defines what parameters to add binary reg
 def if_binary(n):
+    #return (not('bn' in n) and not('downsample' in n)
+            #and not('fc' in n and 'bias' in n))
     return (not('bn' in n) and not('downsample' in n)
-            and not('fc' in n and 'bias' in n))
+            and not('bias' in n))
     # return (not('bn' in n) and not('downsample' in n)
     #         and not('fc' in n and 'bias' in n))
 def if_binary_tern(n):
