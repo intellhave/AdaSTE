@@ -1,6 +1,6 @@
 # Train binarized ResNets on CIFAR-10
 LR=0.01
-DEPTH=20
+DEPTH=18
 
 for i in 0
 do

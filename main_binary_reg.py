@@ -91,12 +91,18 @@ parser.add_argument('--no_adjust', action='store_true',
                     help='Will not adjust learning rate')
 parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
                     help='evaluate model FILE on validation set')
-
+parser.add_argument('--seed', type=int, default=100, metavar='S',
+        help='random seed (default: 10)')
 
 def main():
     global args, best_prec1
     best_prec1 = 0
     args = parser.parse_args()
+
+    # Set seed 
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.manual_seed(args.seed)
 
     if args.evaluate:
         args.results_dir = '/tmp'
