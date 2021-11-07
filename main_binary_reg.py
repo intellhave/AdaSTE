@@ -94,6 +94,9 @@ parser.add_argument('-e', '--evaluate', type=str, metavar='FILE',
 parser.add_argument('--seed', type=int, default=100, metavar='S',
         help='random seed (default: 10)')
 
+parser.add_argument('--num_classes', type=int, default=10, metavar='S',
+        help='random seed (default: 10)')
+
 def main():
     global args, best_prec1
     best_prec1 = 0
