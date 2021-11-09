@@ -284,7 +284,7 @@ def main(trial):
 if __name__ == '__main__':
     sampler = optuna.samplers.TPESampler()
     study = optuna.create_study(sampler = sampler, direction='maximize')
-    study.optimize(func = main, n_trials= 1)
+    study.optimize(func = main, n_trials= 100)
     best_trial = study.best_trial
     print('Best value: {}'.format(best_trial.value))
     for key, value in best_trial.params.items():

@@ -98,6 +98,7 @@ def main():
     parser.add_argument('--data_path', type=str, default='/home/intellhave/Work/Datasets/TINYIMAGENET200/',
             help='path to dataset' )
 
+    parser.add_argument('--beta_inc_rate', type=float, default=1.05)
 
     args = parser.parse_args()
 

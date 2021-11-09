@@ -92,6 +92,7 @@ def main():
     parser.add_argument('--bn-affine', type=float, default= 0, metavar='bn-affine',
                         help='whether there is bn learnable parameters, 1: learnable, 0: no (default: 0)')
 
+    parser.add_argument('--beta_inc_rate', type=float, default=1.05)
 
     args = parser.parse_args()
 

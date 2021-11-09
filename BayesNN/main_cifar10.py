@@ -42,7 +42,7 @@ def main():
     parser.add_argument('--optim', type=str, default='FenBP', help='Optimizer: BayesBiNN, STE, Adam')
     parser.add_argument('--val-split', type=float, default=0.1, help='Random validation set ratio')
     parser.add_argument('--criterion', type=str, default='cross-entropy', help='loss funcion: square-hinge or cross-entropy')
-    parser.add_argument('--batch-size', type=int, default=50, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
@@ -56,12 +56,12 @@ def main():
                         help='learning rate (default: 0.0003)')
     parser.add_argument('--lr-end', type=float, default= 1e-16, metavar='LR',
                         help='end learning rate (default: 0.01)')
-    parser.add_argument('--lr-decay', type=float, default= 0.99, metavar='LR-decay',
+    parser.add_argument('--lr-decay', type=float, default= 0.9, metavar='LR-decay',
                         help='learning rated decay factor for each epoch (default: 0.9)')
     parser.add_argument('--decay-steps', type=int, default=1, metavar='N',
                         help='LR rate decay steps (default: 1)')   
 
-    parser.add_argument('--momentum', type=float, default=0.99, metavar='M',
+    parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                         help='BayesBiNN momentum (default: 0.9)')
     parser.add_argument('--data-augmentation', action='store_true', default=True, help='Enable data augmentation')
     # Logging parameters
@@ -95,6 +95,7 @@ def main():
     parser.add_argument('--bn-affine', type=float, default= 0, metavar='bn-affine',
                         help='whether there is bn learnable parameters, 1: learnable, 0: no (default: 0)')
 
+    parser.add_argument('--beta_inc_rate', type=float, default=1.05)
 
     args = parser.parse_args()
 
@@ -186,9 +187,17 @@ def main():
         )
         print('{} train and {} validation datapoints.'.format(len(train_loader.sampler), len(val_loader.sampler)))
     else:
+        indices = list(range(len(train_dataset)))
+        np.random.shuffle(indices)
+        train_idx = indices[0: 1000]
+        train_sampler = SubsetRandomSampler(train_idx)
         train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs
+            train_dataset, batch_size=args.batch_size, sampler=train_sampler, **kwargs
         )
+
+        # train_loader = torch.utils.data.DataLoader(
+        #     train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs
+        # )
         val_loader = None
         print('{} train and {} validation datapoints.'.format(len(train_loader.sampler), 0))
 
@@ -211,6 +220,8 @@ def main():
         model = ResNet18()
     elif args.model == 'VGG16': #
         model = models.VGG16(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,batch_affine=(args.bn_affine==1))
+    elif args.model == 'VGG16NB': #
+        model = VGG16NB(in_channels, out_features, eps=1e-5, momentum=args.bnmomentum,batch_affine=(args.bn_affine==1))
     else:
         raise ValueError('Undefined Network')
     print(model)
@@ -245,7 +256,9 @@ def main():
                 delta = 1e-6,
                 lr = args.lr,
                 use_STE = False,
-                betas = args.momentum
+                betas = args.momentum,
+                fenbp_alpha = 0.1,
+                fenbp_beta = 10
                 )
 
     # Defining the criterion
