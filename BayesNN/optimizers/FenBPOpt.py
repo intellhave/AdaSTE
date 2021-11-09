@@ -84,8 +84,8 @@ class FenBPOpt(Optimizer):
 
         mask_pos_grad = grad > 1e-3
         mask_neg_grad = grad < -1e-3
-        mask_pos_x = theta > delta
-        mask_neg_x = theta < -delta
+        mask_pos_x = theta > 1 - beta * alpha
+        mask_neg_x = theta < -1 + beta * alpha 
 
         scale = torch.ones_like(y)
         mask = (mask_pos_x & mask_pos_grad) | (mask_neg_x & mask_neg_grad)
