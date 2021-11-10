@@ -18,6 +18,11 @@ def adjust_learning_rate(lr_deacy, optimizer, epoch, step=1):
             param_group['lr'] = param_group['lr'] * lr_deacy
     return
 
+def load_model(model, checkpoint_file):
+    checkpoint = torch.load(checkpoint_file)
+    model.load_state_dict(checkpoint['state_dict'])
+    return model
+
 
 def softmax_predictive_accuracy(logits_list, y, criterion, ret_loss=False):
     # this function used to compute the accuracy of average predictions
@@ -227,8 +232,11 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
 
 def test_model(args, model, test_loader, criterion, optimizer, bn_optimizer):
     model.eval()
-    for n, p in model.named_parameters():
-        p.data = p.data.sign()
+
+    # Binarize the weights before evaluation 
+    if args.optim in ['BayesBiNN', 'FenBP', 'STE']:
+        for n, p in model.named_parameters():
+            p.data = p.data.sign()
 
     test_loss = 0
     total_correct = 0

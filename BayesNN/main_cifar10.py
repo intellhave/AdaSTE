@@ -18,7 +18,7 @@ from optimizers import FenBPOpt
 from optimizers import FenBPOptQuad
 from optimizers import FenBPOptProx
 
-from utils import plot_result, train_model, SquaredHingeLoss, save_train_history
+from utils import plot_result, train_model, SquaredHingeLoss, save_train_history, load_model
 import numpy as np
 
 import torch.nn.parallel
@@ -96,6 +96,7 @@ def main():
                         help='whether there is bn learnable parameters, 1: learnable, 0: no (default: 0)')
 
     parser.add_argument('--beta_inc_rate', type=float, default=1.05)
+    parser.add_argument('--resume_path', type=str, default='')
 
     args = parser.parse_args()
 
@@ -123,8 +124,8 @@ def main():
 
     # torch.manual_seed(args.seed + args.experiment_id)
     # np.random.seed(args.seed + args.experiment_id)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = False
+    torch.backends.cudnn.benchmark = True
     torch.manual_seed(args.seed)
 
     now = time.strftime("%Y_%m_%d_%H_%M_%S",time.localtime(time.time())) # to avoid overwrite
@@ -187,17 +188,17 @@ def main():
         )
         print('{} train and {} validation datapoints.'.format(len(train_loader.sampler), len(val_loader.sampler)))
     else:
-        indices = list(range(len(train_dataset)))
-        np.random.shuffle(indices)
-        train_idx = indices[0: 1000]
-        train_sampler = SubsetRandomSampler(train_idx)
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=args.batch_size, sampler=train_sampler, **kwargs
-        )
-
+        # indices = list(range(len(train_dataset)))
+        # np.random.shuffle(indices)
+        # train_idx = indices[0: 1000]
+        # train_sampler = SubsetRandomSampler(train_idx)
         # train_loader = torch.utils.data.DataLoader(
-        #     train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs
+        #     train_dataset, batch_size=args.batch_size, sampler=train_sampler, **kwargs
         # )
+
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs
+        )
         val_loader = None
         print('{} train and {} validation datapoints.'.format(len(train_loader.sampler), 0))
 
@@ -229,16 +230,19 @@ def main():
     num_parameters = sum([l.nelement() for l in model.parameters()])
     print("Number of Network parameters: {}".format(num_parameters))
 
-    # model = torch.nn.DataParallel(model,device_ids=gpu_num)
-    model = model.to(args.device)
 
     # Initialize model
-    # for n,p in model.parameters():
-    for n, p in model.named_parameters():
-        if len(p.size())>=2:
-            nn.init.xavier_uniform_(p)
+    if args.resume_path !='':
+        model = load_model(model, args.resume_path)
+    else:
+        for n, p in model.named_parameters():
+            if len(p.size())>=2:
+                nn.init.xavier_uniform_(p)
         else:
             nn.init.normal_(p, std=0.1)
+
+    # model = torch.nn.DataParallel(model,device_ids=gpu_num)
+    model = model.to(args.device)
 
     cudnn.benchmark = False
     # Defining the optimizer
@@ -257,8 +261,8 @@ def main():
                 lr = args.lr,
                 use_STE = False,
                 betas = args.momentum,
-                fenbp_alpha = 0.1,
-                fenbp_beta = 10
+                fenbp_alpha = 0.01,
+                fenbp_beta = 0.01
                 )
 
     # Defining the criterion
