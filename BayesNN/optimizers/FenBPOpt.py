@@ -62,14 +62,18 @@ class FenBPOpt(Optimizer):
 
     def get_grad(self, closure, theta, delta, eta, straight_through=False):
         parameters = self.param_groups[0]['params']
+
+        #Annealing parameter
         beta = self.beta
         alpha = self.alpha
-        vector_to_parameters(theta, parameters)
-        y = theta
+
+        # y = theta
+        
+        # Compute w*
         w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta), 
                 min_val=-1.0, max_val=1.0)
 
-        #w_vector = F.hardtanh(theta/1e-6, min_val=-1.0, max_val=1.0)
+        # Pass to the model 
         vector_to_parameters(w_vector, parameters)
         
         # Get loss and predictions
@@ -80,23 +84,33 @@ class FenBPOpt(Optimizer):
 
         # Use sign to evaluate
         vector_to_parameters(torch.sign(theta), parameters)
+        loss, preds = closure()
 
         # if straight_through:
         #     return loss, preds, grad
 
+        # Scale the gradients
+        scale = torch.ones_like(theta)
+
         mask_pos_grad = grad > 1e-3
         mask_neg_grad = grad < -1e-3
-        mask_pos_x = theta > 1e-3
-        mask_neg_x = theta < -1e-3
-        # mask_pos_x = theta > max(1e-6, 1 - beta * alpha)
-        # mask_neg_x = theta < min(-1e-6,-1 + beta * alpha)
 
-        scale = torch.ones_like(y)
-        mask = (mask_pos_x & mask_pos_grad) | (mask_neg_x & mask_neg_grad)
-        scale[mask] = torch.clamp(1./y[mask].abs(), min=0, max = 0.5)
+        if (beta * alpha < 1):
+            scale *= 1/(1 + beta)
+            mask_pos_x = theta > max(1e-6, 1 - beta * alpha)
+            mask_neg_x = theta < min(-1e-6,-1 + beta * alpha)
 
-        mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
-        scale[mask] = 0.0
+            mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
+            scale[mask] = 0.0
+        else:
+            mask_pos_x = theta > 1e-3
+            mask_neg_x = theta < -1e-3
+
+            mask = (mask_pos_x & mask_pos_grad) | (mask_neg_x & mask_neg_grad)
+            scale[mask] = torch.clamp(1./y[mask].abs(), min=0, max = 0.5)
+
+            mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
+            scale[mask] = 0.0
 
         grad *= scale
         return loss, preds, grad

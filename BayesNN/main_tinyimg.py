@@ -209,6 +209,14 @@ def main():
         )
         print('{} train and {} validation datapoints.'.format(len(train_loader.sampler), len(val_loader.sampler)))
     else:
+        # indices = list(range(len(train_dataset)))
+        # np.random.shuffle(indices)
+        # train_idx = indices[0: 1000]
+        # train_sampler = SubsetRandomSampler(train_idx)
+        # train_loader = torch.utils.data.DataLoader(
+        #     train_dataset, batch_size=args.batch_size, sampler=train_sampler, **kwargs
+        # )
+
         train_loader = torch.utils.data.DataLoader(
             train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs
         )
