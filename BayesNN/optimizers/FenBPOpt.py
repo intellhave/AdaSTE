@@ -42,12 +42,10 @@ class FenBPOpt(Optimizer):
 
         # step initilization
         self.state['step'] = 0
-        # self.state['temperature'] = temperature
         self.state['reweight'] = reweight
         self.state['delta']=delta
         self.state['eta']=eta
         self.state['use_STE']=use_STE
-        # self.state['use_STE']=True
 
         self.alpha = fenbp_alpha
         self.beta = fenbp_beta
@@ -100,14 +98,24 @@ class FenBPOpt(Optimizer):
             mask_pos_x = theta > max(1e-6, 1 - beta * alpha)
             mask_neg_x = theta < min(-1e-6,-1 + beta * alpha)
 
+            mask_pos_mid_x  = (1e-6 < theta) & (theta < 1 - beta * alpha)
+            mask_neg_mid_x = (-1 + beta * alpha < theta ) & ( theta  < -1e-6)
+
             mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
             scale[mask] = 0.0
+            
+            mask = (mask_neg_grad & mask_neg_x) | (mask_pos_grad & mask_pos_x)
+            scale[mask] = torch.clamp( ((1 + 2*beta + beta*alpha)/(1 + beta))* 1./theta[mask].abs(), min=0, max = 0.5 )
+
+            mask = (mask_neg_grad & mask_neg_mid_x) | (mask_pos_grad & mask_pos_mid_x)
+            scale[mask] = torch.clamp( ((2*beta*(1+alpha) - theta[mask])/(1 + beta))*1./theta[mask].abs(), min=0, max = 0.5)
+
         else:
             mask_pos_x = theta > 1e-3
             mask_neg_x = theta < -1e-3
 
             mask = (mask_pos_x & mask_pos_grad) | (mask_neg_x & mask_neg_grad)
-            scale[mask] = torch.clamp(1./y[mask].abs(), min=0, max = 0.5)
+            scale[mask] = torch.clamp(1./theta[mask].abs(), min=0, max = 0.5)
 
             mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
             scale[mask] = 0.0
