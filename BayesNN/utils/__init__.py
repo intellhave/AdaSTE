@@ -1,5 +1,5 @@
 from .plotting import plot_result
-from .train_utils import train_model, test_model
+from .train_utils import train_model, test_model, load_model
 from .binarized_modules import SquaredHingeLoss, SquaredHingeLoss100
 from .logging_utils import save_train_history, save_train_history_CL
 from .binarized_modules import Binarize
