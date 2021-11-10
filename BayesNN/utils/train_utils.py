@@ -104,9 +104,12 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
         # Debug
         # val_loss, val_accuracy = test_model(args, model, testloader, criterion, optimizer, bn_optimizer)
         print('Epoch[%d]:' % epoch)
-
         model.train(True)
 
+        # Adjust beta 
+        if args.optim=='FenBP':
+            optimizer.beta = min(optimizer.beta*args.beta_inc_rate, 1/optimizer.alpha)
+            print('Current beta: ', optimizer.beta)
 
         # learning rate decaly
         opt_scheduler.step()
@@ -161,10 +164,6 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
                         loss.backward()
                         return loss, logits
 
-                # Adjust beta 
-                if args.optim=='FenBP' and global_step % 500 == 0:
-                    optimizer.beta = min(optimizer.beta*1.05, 1/optimizer.alpha + 100)
-                    print('Current beta: ', optimizer.beta)
 
                 loss, output = optimizer.step(closure)
 
