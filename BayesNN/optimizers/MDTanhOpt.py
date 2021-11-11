@@ -13,14 +13,14 @@ def update_input(self, input, output):
     self.input = input[0].data
     self.output = output 
 
-class FenBPOpt(Optimizer):
+class MDTanhOpt(Optimizer):
 
     def __init__(self, model, train_set_size, lr=1e-4, betas=0.0, delta=1e-6, eta=0.9999, lamda_init=10, lamda_std=0, reweight=1, use_STE=False, fenbp_alpha = 0.01, fenbp_beta = 0.01):
         if train_set_size < 1:
             raise ValueError("Invalid number of datapoints: {}".format(train_set_size))
 
         defaults=dict(lr=lr, train_set_size=train_set_size, beta=betas)
-        super(FenBPOpt, self).__init__(model.parameters(), defaults)
+        super(MDTanhOpt, self).__init__(model.parameters(), defaults)
 
         self.train_modules = []
         self.set_train_modules(model)
@@ -47,8 +47,8 @@ class FenBPOpt(Optimizer):
         self.state['eta']=eta
         self.state['use_STE']=use_STE
 
-        self.alpha = fenbp_alpha
-        self.beta = fenbp_beta
+        self.alpha = 1e-10
+        self.beta = 1.0
 
     def set_train_modules(self, module):
         if len(list(module.children())) == 0:
@@ -68,11 +68,7 @@ class FenBPOpt(Optimizer):
         # y = theta
         
         # Compute w*
-        if straight_through:
-            w_vector = torch.sign(theta)
-        else:
-            w_vector = F.hardtanh((theta + beta * (1 + alpha)*theta.sign())/(1 + beta), 
-                    min_val=-1.0, max_val=1.0)
+        w_vector = torch.tanh(theta * beta)
 
         # Pass to the model 
         vector_to_parameters(w_vector, parameters)
@@ -87,43 +83,10 @@ class FenBPOpt(Optimizer):
         vector_to_parameters(torch.sign(theta), parameters)
         loss, preds = closure()
 
-        if straight_through:
-            return loss, preds, grad
+        # if straight_through:
+        #     return loss, preds, grad
 
         # Scale the gradients
-        scale = torch.ones_like(theta)
-
-        mask_pos_grad = grad > 1e-3
-        mask_neg_grad = grad < -1e-3
-
-        if (beta * alpha < 1):
-            scale *= 1/(1 + beta)
-            mask_pos_x = theta > max(1e-6, 1 - beta * alpha)
-            mask_neg_x = theta < min(-1e-6,-1 + beta * alpha)
-
-            mask_pos_mid_x  = (1e-6 < theta) & (theta < 1 - beta * alpha)
-            mask_neg_mid_x = (-1 + beta * alpha < theta ) & ( theta  < -1e-6)
-
-            mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
-            scale[mask] = 0.0
-            
-            mask = (mask_neg_grad & mask_neg_x) | (mask_pos_grad & mask_pos_x)
-            scale[mask] = torch.clamp( ((1 + 2*beta + beta*alpha)/(1 + beta))* 1./theta[mask].abs(), min=0, max = 0.5 )
-
-            mask = (mask_neg_grad & mask_neg_mid_x) | (mask_pos_grad & mask_pos_mid_x)
-            scale[mask] = torch.clamp( ((2*beta*(1+alpha) - theta[mask])/(1 + beta))*1./theta[mask].abs(), min=0, max = 0.5)
-
-        else:
-            mask_pos_x = theta > 1e-3
-            mask_neg_x = theta < -1e-3
-
-            mask = (mask_pos_x & mask_pos_grad) | (mask_neg_x & mask_neg_grad)
-            scale[mask] = torch.clamp(1./theta[mask].abs(), min=0, max = 0.5)
-
-            mask = (mask_pos_x & mask_neg_grad) | (mask_neg_x & mask_pos_grad)
-            scale[mask] = 0.0
-
-        grad *= scale
         return loss, preds, grad
 
     def step(self, closure):

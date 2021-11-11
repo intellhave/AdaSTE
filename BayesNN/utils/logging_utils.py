@@ -2,7 +2,6 @@ import os
 import json
 
 
-
 def save_train_history_CL(args,test_acc):
     dict_save_path = os.path.join(args.out_dir, 'dicts', 'train_hist_{}.json'.format(args.experiment_id))
     os.makedirs(os.path.dirname(dict_save_path), exist_ok=True)

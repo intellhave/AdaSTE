@@ -136,7 +136,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
                 loss.backward()
                 bn_optimizer.step()
 
-            if args.optim == 'STE':
+            if args.optim == 'STEA':
                 optimizer.zero_grad()
                 output = model.forward(inputs)
                 loss = criterion(output, labels)
@@ -156,7 +156,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
 
             else:
                 # if args.optim == 'BayesBiNN' or args.optim=='FenBP' or args.optim=='MDTanhOpt':
-                if args.optim in ['BayesBiNN', 'FenBP', 'MDTanhOpt']:
+                if args.optim in ['BayesBiNN', 'FenBP', 'MDTanhOpt', 'STE']:
                     def closure():
                         optimizer.zero_grad()
                         output = model.forward(inputs)
