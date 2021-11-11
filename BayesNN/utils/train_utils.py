@@ -226,7 +226,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
             best_test_acc = max(best_test_acc, test_accuracy)
             logging.info('## Epoch[%d], Test Loss:  %f   &   Test Accuracy:  %f, Best Acc: %f' % (epoch, test_loss, test_accuracy, best_test_acc))
 
-            if (epoch+1) % 100 == 0 and args.save_model:
+            if (epoch+1) % 20 == 0 and args.save_model:
                 state = {
                     'epoch': epoch+1,
                     'best_acc1': best_test_acc,
