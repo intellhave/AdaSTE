@@ -154,13 +154,11 @@ class FenBPOpt(Optimizer):
         eta = self.state['eta']
         
         # Obtain gradients
-        # loss_soft, pred_soft, grad_soft = self.get_grad(closure, lamda, delta=1.0, eta=0.001,straight_through=False)
         loss, pred, gr = self.get_grad(closure, lamda, delta=delta, eta = self.state['eta'], straight_through=self.state['use_STE'] )
 
         loss_list.append(loss)
         pred_list.append(pred)
 
-        # grad_hat = defaults['train_set_size'] * grad
         grad_hat = defaults['train_set_size'] * gr
         grad_hat = grad_hat.mul(defaults['train_set_size'])
 

@@ -112,7 +112,7 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
         model.train(True)
 
         # Adjust beta 
-        if args.optim=='FenBP':
+        if args.optim in ['FenBP', 'MDTanhOpt']:
             optimizer.beta = min(optimizer.beta*args.beta_inc_rate, 1/optimizer.alpha)
             print('Current beta: ', optimizer.beta)
 
@@ -155,7 +155,8 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
                         p.org.copy_(p.data.clamp_(-1, 1))
 
             else:
-                if args.optim == 'BayesBiNN' or args.optim=='FenBP':
+                # if args.optim == 'BayesBiNN' or args.optim=='FenBP' or args.optim=='MDTanhOpt':
+                if args.optim in ['BayesBiNN', 'FenBP', 'MDTanhOpt']:
                     def closure():
                         optimizer.zero_grad()
                         output = model.forward(inputs)
@@ -224,6 +225,18 @@ def train_model(args, model, dataloaders, criterion, optimizer, bn_optimizer=Non
             test_loss_hist.append(test_loss)
             best_test_acc = max(best_test_acc, test_accuracy)
             logging.info('## Epoch[%d], Test Loss:  %f   &   Test Accuracy:  %f, Best Acc: %f' % (epoch, test_loss, test_accuracy, best_test_acc))
+
+            if (epoch+1) % 100 == 0 and args.save_model:
+                state = {
+                    'epoch': epoch+1,
+                    'best_acc1': best_test_acc,
+                    'state_dict': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                }
+                save_path = os.path.join(args.out_dir, 'saved_models', 'model_{}_checkpoint_{}.ckpt'.format(args.experiment_id, epoch+1))
+                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                torch.save(state, save_path)
+
         logging.info('')
 
     writer.close()
@@ -234,7 +247,7 @@ def test_model(args, model, test_loader, criterion, optimizer, bn_optimizer):
     model.eval()
 
     # Binarize the weights before evaluation 
-    if args.optim in ['BayesBiNN', 'FenBP', 'STE']:
+    if args.optim in ['BayesBiNN', 'FenBP', 'STE', 'MDTanhOpt']:
         for n, p in model.named_parameters():
             p.data = p.data.sign()
 
