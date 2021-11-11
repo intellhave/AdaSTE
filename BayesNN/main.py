@@ -45,7 +45,10 @@ def main():
 
     #Prepare output folder
     now = time.strftime("%Y_%m_%d_%H_%M_%S",time.localtime(time.time())) # to avoid overwrite
-    args.out_dir = os.path.join('./outputs', '{}_{}_{}_lr{}_b{}_{}_id{}'.format(args.dataset, args.model, args.optim,args.lr, args.init_beta, now,args.experiment_id))
+    if args.optim=='FenBP':
+        args.out_dir = os.path.join('./outputs', '{}_{}_{}_lr{}_b{}_{}_id{}'.format(args.dataset, args.model, args.optim,args.lr, args.init_beta, now,args.experiment_id))
+    else:
+        args.out_dir = os.path.join('./outputs', '{}_{}_{}_lr{}_{}_id{}'.format(args.dataset, args.model, args.optim,args.lr,now,args.experiment_id))
     os.makedirs(args.out_dir, exist_ok=True)
 
     # Save the configs for the runs 
