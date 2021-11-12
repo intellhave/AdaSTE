@@ -6,12 +6,17 @@ import pandas as pd
 from bokeh.io import output_file, save, show
 from bokeh.plotting import figure
 from bokeh.layouts import column
+import time 
 #from bokeh.charts import Line, defaults
 #
 #defaults.width = 800
 #defaults.height = 400
 #defaults.tools = 'pan,box_zoom,wheel_zoom,box_select,hover,resize,reset,save'
 
+def timeSince(since):
+    now = time.time()
+    s = now - since 
+    return s
 
 def setup_logging(log_file='log.txt'):
     """Setup logging configuration
@@ -26,7 +31,6 @@ def setup_logging(log_file='log.txt'):
     formatter = logging.Formatter('%(message)s')
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
-
 
 class ResultsLog(object):
 

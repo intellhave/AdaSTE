@@ -2,16 +2,23 @@ import torch
 from torchvision import datasets, transforms
 import os
 
+def get_data_props(dataset):
+    if dataset=='cifar10':
+        return 3, 10, 32
+    elif dataset=='cifar100':
+        return 3, 100, 32
+    elif dataset=='tinyimg':
+        return 3, 200, 64
 
-def get_aug_transform(normalize_factor):
+def get_aug_transform(normalize_factor, imsize=32, padding=4):
     return  transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
+        transforms.RandomCrop(imsize, padding=padding),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(normalize_factor[0], normalize_factor[1]),
         ])
 
-def get_org_transform (normalize_factor):
+def get_org_transform (normalize_factor, imsize=32):
     return transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(normalize_factor[0], normalize_factor[1]),
@@ -28,13 +35,14 @@ def get_normalize_factor(dataset):
 
 def get_transform(dataset, is_train=True, augmentation=True):
     normalize_factor = get_normalize_factor(dataset)
+    _, _, imsize = get_data_props(dataset)
     if is_train:
         if augmentation:
-            return get_aug_transform(normalize_factor)
+            return get_aug_transform(normalize_factor, imsize)
         else:
-            return get_org_transform(normalize_factor)
+            return get_org_transform(normalize_factor, imsize)
     else:
-        return  get_org_transform(normalize_factor)
+        return  get_org_transform(normalize_factor, imsize)
 
 
 def get_dataset(dataset, data_path, is_train = True):
@@ -51,14 +59,6 @@ def get_dataset(dataset, data_path, is_train = True):
             datadir = os.path.join(data_path, 'val/images')
 
         return datasets.ImageFolder(datadir, transform=get_transform(dataset, is_train))
-
-def get_data_props(dataset):
-    if dataset=='cifar10':
-        return 3, 10, 32
-    elif dataset=='cifar100':
-        return 3, 100, 32
-    elif dataset=='tinyimg':
-        return 3, 200, 32
 
     
         
