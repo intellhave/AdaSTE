@@ -67,8 +67,9 @@ def get_parser():
     parser.add_argument('--beta_inc_rate', type=float, default=1.05)
     parser.add_argument('--init_beta', type=float, default=0.01)
     parser.add_argument('--alpha', type=float, default=0.01)
-
+    parser.add_argument('--weight-decay', type=float, default=1.0)
     parser.add_argument('--resume_path', type=str, default='')
+
 
     return parser
 
