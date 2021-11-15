@@ -257,7 +257,7 @@ def test_model(args, model, test_loader, criterion, optimizer, bn_optimizer):
         for data, target in test_loader:
             data, target = data.to(args.device), target.to(args.device)
 
-            if optimizer is not None and args.optim == 'BayesBiNN':
+            if optimizer is not None and args.optim == 'BayesBiNN-Mode':
                 raw_noises = []
                
                 if args.test_samples <= 0:
