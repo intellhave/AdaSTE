@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns; sns.set_style("whitegrid")
 
 
-network = 'resnet'
-depth = 20
+network = 'vgg'
+depth = 18
 if network=='resnet':
     network = 'resnet{}'.format(depth)
 
