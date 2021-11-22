@@ -11,12 +11,14 @@ from txt_utils import parse_bayesbinn_log_file, parse_md_tanh_log_file
 
 plt.rc('font', family='serif')
 
-dataset='CIFAR10'
+dataset='CIFAR100'
 network = 'VGG16'
+max_epochs = 700
 
 method_lists = {}
 #method_lists ['acc'] = ['FENBPNA', 'FENBP', 'BAYESBINN', 'BC', 'MDTANH']
-method_lists ['acc'] = ['FENBPNA', 'FENBP', 'BAYESBINN', 'MDTANH', 'BC']
+#method_lists ['acc'] = ['FENBPNA', 'FENBP', 'BAYESBINN', 'MDTANH', 'BC']
+method_lists ['acc'] = ['FENBPNA', 'BAYESBINN']
 method_lists ['loss'] =  ['FENBPNA', 'FENBP', 'BAYESBINN']
 #method_lists ['loss'] =  ['FENBPNA', 'FENBP', 'BAYESBINN']
 
@@ -37,7 +39,7 @@ method_colors = {
 
 method_line_styles = {
         'FENBPNA': 'solid',
-        'FENBP': 'solid', 
+        'FENBP': 'dotted', 
         'BAYESBINN': 'dashed',
         'BC': 'dashed',
         'STE': 'dashed',
@@ -50,8 +52,7 @@ plot_types=['acc', 'loss']
 y_labels = {'loss': 'Training Loss', 'acc': 'Testing Accuracy'}
 
 for plot_type in plot_types:
-    plt.figure(figsize=(6,4))
-    max_epochs = 200
+    plt.figure(figsize=(5,2.5))
 
     method_list = method_lists[plot_type]
 
@@ -66,10 +67,10 @@ for plot_type in plot_types:
             file_path = os.path.join(data_path, file_name)
             txt_file_path = os.path.join(data_path, txt_file_name)
             #train_loss, test_acc = get_loss_acc_json(file_path)
-            if os.path.exists(txt_file_path):
-                train_loss, test_acc = parse_bayesbinn_log_file(txt_file_path)
-            else:
+            if os.path.exists(file_path):
                 train_loss, test_acc = get_loss_acc_json(file_path)
+            else:
+                train_loss, test_acc = parse_bayesbinn_log_file(txt_file_path)
         else:
             txt_file_name = 'log.txt'
             csv_file_name = 'results.csv'
@@ -89,11 +90,11 @@ for plot_type in plot_types:
                 label='{}'.format(method_legend[method]), 
                 linestyle=method_line_styles[method],
                 color = method_colors[method],
-                lw = 3 )
+                lw = 2.5 )
 
-        plt.ylabel(y_labels[plot_type], fontsize=14); 
-        plt.xlabel('{Epoch}', fontsize=14); 
-        plt.legend(fontsize=12); plt.tight_layout()
+        plt.ylabel(y_labels[plot_type], fontsize=12); 
+        plt.xlabel('{Epoch}', fontsize=12); 
+        plt.legend(fontsize=10); plt.tight_layout()
         plt.savefig('./figs/{}/{}_{}_{}_e{}.pdf'.format(dataset,dataset, network, plot_type,max_epochs))
 
 # bayes_file='./data/cifar10_vgg_bayes/dicts/train_hist_200.json'
