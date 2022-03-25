@@ -1,8 +1,4 @@
-from .alexnet import *
-from .alexnet_binary import *
-from .resnet import *
-from .resnet_binary import *
-#from .vgg_cifar10_binary import *
-#from .simple_cnn import *
-#from .simple_mlp import *
-from .vgg16  import *
+#from .models import MLP, CNN, BinaryConnect, BinaryNet
+from .models import *
+from .models_STE import *
+from .simple_models import *
