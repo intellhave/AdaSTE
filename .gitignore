@@ -1,6 +1,3 @@
-/Datasets/*
-/__pycache__/*
-/models/__pycache__/*
-/results/*
-/tb/*
-
+*/__pycache__/*
+/data
+/outputs
